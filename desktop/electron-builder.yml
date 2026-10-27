@@ -1,0 +1,46 @@
+appId: com.kryptonsecurity.desktop
+productName: Krypton AI Security
+copyright: Copyright © 2026 Krypton Security Inc.
+
+directories:
+  output: release
+  buildResources: build-resources
+
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - package.json
+
+compression: maximum
+
+artifactName: Krypton-${os}-${version}-${arch}.${ext}
+
+win:
+  artifactName: Krypton-Security-Setup-${version}.${ext}
+  target:
+    - target: nsis
+      arch:
+        - x64
+  legalTrademarks: Krypton AI Data Loss Prevention Platform
+
+mac:
+  artifactName: Krypton-macOS-${version}-${arch}.${ext}
+  category: public.app-category.utilities
+  electronLanguages:
+    - en
+  target:
+    - target: dmg
+      arch: [arm64]
+
+dmg:
+  title: Krypton AI Security
+  format: ULFO
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: Krypton AI Security
+  uninstallDisplayName: Krypton AI Security

@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-[#05080e] text-slate-100 font-sans antialiased selection:bg-sky-400 selection:text-slate-950;
+  }
+}
+
+.glass-nav {
+  background: rgba(5, 8, 14, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.gradient-border {
+  position: relative;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.1), rgba(15, 23, 42, 0.05));
+  border: 1px solid rgba(56, 189, 248, 0.2);
+}

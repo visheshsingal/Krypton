@@ -1,0 +1,43 @@
+{
+  "name": "krypton-platform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Krypton - Enterprise AI Security & Data Governance SaaS Platform (Vercel Serverless Architecture)",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "seed": "ts-node -O '{\"module\":\"commonjs\"}' scripts/seed.ts",
+    "superadmin:sync": "ts-node -O '{\"module\":\"commonjs\"}' scripts/sync-superadmin.ts",
+    "desktop:dev": "npm --prefix desktop run dev",
+    "desktop:build": "npm --prefix desktop run build",
+    "desktop:win": "npm --prefix desktop run build:win"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "clsx": "^2.1.1",
+    "dotenv": "^16.4.5",
+    "jsonwebtoken": "^9.0.2",
+    "lucide-react": "^0.395.0",
+    "mongoose": "^8.4.1",
+    "next": "^14.2.3",
+    "nodemailer": "^6.9.13",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwind-merge": "^2.3.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.6",
+    "@types/node": "^20.14.2",
+    "@types/nodemailer": "^6.4.15",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.4",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  }
+}

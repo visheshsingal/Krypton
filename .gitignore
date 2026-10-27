@@ -1,0 +1,29 @@
+cat >> .gitignore <<'EOF'
+
+# Git backup
+.git-backup/
+
+# Dependencies
+node_modules/
+
+# Next.js build and cache
+.next/
+out/
+
+# Build artifacts
+dist/
+desktop/dist-electron/
+desktop/dist/
+desktop/release/
+build/
+
+# Installer files
+public/downloads/*.exe
+public/downloads/*.dmg
+public/downloads/*.tar.xz
+public/downloads/*.blockmap
+
+# Generated files
+*.tsbuildinfo
+.DS_Store
+EOF

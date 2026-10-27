@@ -1,0 +1,38 @@
+{
+  "name": "krypton-desktop",
+  "version": "1.0.0",
+  "description": "Krypton AI Data Loss Prevention & Prompt Security Desktop Agent",
+  "main": "dist-electron/main/main.js",
+  "scripts": {
+    "dev": "vite",
+    "dev:electron": "tsc -p tsconfig.electron.json && electron .",
+    "build": "vite build && tsc -p tsconfig.electron.json",
+    "build:win": "npm run build && electron-builder --win nsis --x64 --config electron-builder.yml",
+    "build:mac": "npm run build && electron-builder --mac dmg --arm64 --config electron-builder.yml && electron-builder --mac dir --x64 --config electron-builder.yml && tar -cJf release/Krypton-macOS-1.0.0-x64.tar.xz -C release/mac 'Krypton AI Security.app'",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@krypton/shared": "file:../shared",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.395.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwind-merge": "^2.3.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.12",
+    "@types/node": "^20.14.2",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "autoprefixer": "^10.4.19",
+    "electron": "^30.0.9",
+    "electron-builder": "^24.13.3",
+    "jest": "^29.7.0",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.4",
+    "ts-jest": "^29.1.4",
+    "typescript": "^5.4.5",
+    "vite": "^5.2.13"
+  }
+}
