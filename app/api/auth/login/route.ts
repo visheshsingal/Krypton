@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { connectDB } from '@/lib/db';
 import { User } from '@/models/User';
@@ -10,29 +11,69 @@ import { logAuditEvent } from '@/lib/audit';
 export async function POST(req: NextRequest) {
   try {
     await connectDB();
-    const { email, password } = await req.json();
+    const body = await req.json();
+    const email = typeof body.email === 'string' ? body.email : '';
+    const password = typeof body.password === 'string' ? body.password : '';
 
     if (!email || !password) {
       return NextResponse.json({ error: 'Email/username and password are required.' }, { status: 400 });
     }
 
     const normalizedEmail = email.trim().toLowerCase();
-    const user = await User.findOne({ email: normalizedEmail });
+    let user = await User.findOne({ email: normalizedEmail });
+
+    const superAdminEmail = process.env.SUPERADMIN_EMAIL?.trim().toLowerCase();
+    const superAdminPassword = process.env.SUPERADMIN_PASSWORD;
+    const passwordBuffer = Buffer.from(password);
+    const configuredPasswordBuffer = Buffer.from(superAdminPassword || '');
+    const normalizedSuperAdminEmail = superAdminEmail || '';
+    const matchesSuperAdminBootstrap =
+      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedSuperAdminEmail) &&
+      normalizedEmail === normalizedSuperAdminEmail &&
+      configuredPasswordBuffer.length >= 12 &&
+      passwordBuffer.length === configuredPasswordBuffer.length &&
+      crypto.timingSafeEqual(passwordBuffer, configuredPasswordBuffer);
+
+    if (matchesSuperAdminBootstrap) {
+      const currentPasswordMatches = user ? await user.comparePassword(password) : false;
+      if (!user || user.role !== 'super_admin' || !user.isActive || !currentPasswordMatches) {
+        const passwordHash = await bcrypt.hash(password, 12);
+        const now = new Date();
+        await User.updateOne(
+          { email: normalizedSuperAdminEmail },
+          {
+            $set: {
+              email: normalizedSuperAdminEmail,
+              passwordHash,
+              name: process.env.SUPERADMIN_NAME?.trim() || 'Krypton Root Administrator',
+              role: 'super_admin',
+              isActive: true,
+              hasLicenseSeat: false,
+              refreshTokens: [],
+              updatedAt: now,
+            },
+            $setOnInsert: { createdAt: now },
+            $unset: { companyId: '' },
+          },
+          { upsert: true }
+        );
+        user = await User.findOne({ email: normalizedSuperAdminEmail });
+      }
+    } else {
+      if (!user || !(await user.comparePassword(password))) {
+        return NextResponse.json({ error: 'Invalid email or password.' }, { status: 401 });
+      }
+
+      if (!user.isActive) {
+        return NextResponse.json(
+          { error: 'Your account has been deactivated. Please contact your company administrator.' },
+          { status: 403 }
+        );
+      }
+    }
 
     if (!user) {
-      return NextResponse.json({ error: 'Invalid email or password.' }, { status: 401 });
-    }
-
-    if (!user.isActive) {
-      return NextResponse.json(
-        { error: 'Your account has been deactivated. Please contact your company administrator.' },
-        { status: 403 }
-      );
-    }
-
-    const isMatch = await user.comparePassword(password);
-    if (!isMatch) {
-      return NextResponse.json({ error: 'Invalid email or password.' }, { status: 401 });
+      return NextResponse.json({ error: 'Could not initialize the Super Admin account.' }, { status: 500 });
     }
 
     let companyData: any = null;
