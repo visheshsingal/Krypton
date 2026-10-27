@@ -16,7 +16,8 @@ if (cachedPolicy) {
 }
 
 let mainWindow: BrowserWindow | null = null;
-const configuredBackendUrl = process.env.KRYPTON_API_URL || (isDev ? 'http://localhost:5000/api' : '');
+const productionBackendUrl = 'https://krypton-ten-theta.vercel.app/api';
+const configuredBackendUrl = process.env.KRYPTON_API_URL || (isDev ? 'http://localhost:5000/api' : productionBackendUrl);
 
 function getBackendUrl(): string {
   if (!configuredBackendUrl) {

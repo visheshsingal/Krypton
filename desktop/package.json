@@ -7,8 +7,8 @@
     "dev": "vite",
     "dev:electron": "tsc -p tsconfig.electron.json && electron .",
     "build": "vite build && tsc -p tsconfig.electron.json",
-    "build:win": "npm run build && electron-builder --win nsis --x64 --config electron-builder.yml",
-    "build:mac": "npm run build && electron-builder --mac dmg --arm64 --config electron-builder.yml && electron-builder --mac dir --x64 --config electron-builder.yml && tar -cJf release/Krypton-macOS-1.0.0-x64.tar.xz -C release/mac 'Krypton AI Security.app'",
+    "build:win": "node scripts/build-win-release.cjs",
+    "build:mac": "node scripts/build-mac-release.cjs",
     "test": "jest"
   },
   "dependencies": {

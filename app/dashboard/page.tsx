@@ -311,7 +311,7 @@ export default function CompanyDashboard() {
 
   const handleLogout = () => {
     localStorage.clear();
-    router.push('/login');
+    router.push('/');
   };
 
   if (loading) {

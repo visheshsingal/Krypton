@@ -18,6 +18,8 @@ import {
   Calendar,
   Layers,
   Lock,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 export default function SuperAdminDashboard() {
@@ -37,6 +39,7 @@ export default function SuperAdminDashboard() {
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [adminModalLoading, setAdminModalLoading] = useState(false);
   const [adminEmail, setAdminEmail] = useState('');
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
   const [adminCreateError, setAdminCreateError] = useState<string | null>(null);
   const [createdAdmin, setCreatedAdmin] = useState<{
     companyName: string;
@@ -277,7 +280,7 @@ export default function SuperAdminDashboard() {
 
   const handleLogout = () => {
     localStorage.clear();
-    router.push('/login');
+    router.push('/');
   };
 
   if (loading) {
@@ -720,15 +723,25 @@ export default function SuperAdminDashboard() {
               </div>
               <div>
                 <label className="mb-1 block font-semibold text-slate-300">Initial password (minimum 8 characters)</label>
-                <input
-                  required
-                  type="password"
-                  minLength={8}
-                  autoComplete="new-password"
-                  value={adminForm.password}
-                  onChange={(e) => setAdminForm({ ...adminForm, password: e.target.value })}
-                  className="w-full rounded-lg border border-slate-800 bg-slate-950 p-2.5 text-white focus:border-sky-400 focus:outline-none"
-                />
+                <div className="relative">
+                  <input
+                    required
+                    type={showAdminPassword ? 'text' : 'password'}
+                    minLength={8}
+                    autoComplete="new-password"
+                    value={adminForm.password}
+                    onChange={(e) => setAdminForm({ ...adminForm, password: e.target.value })}
+                    className="w-full rounded-lg border border-slate-800 bg-slate-950 p-2.5 pr-10 text-white focus:border-sky-400 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAdminPassword((visible) => !visible)}
+                    aria-label={showAdminPassword ? 'Hide password' : 'Show password'}
+                    className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 hover:text-white"
+                  >
+                    {showAdminPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
               <div>
                 <label className="mb-1 block font-semibold text-slate-300">Number of licenses / seats</label>

@@ -16,6 +16,7 @@ import {
   LogOut,
   Send,
   Eye,
+  EyeOff,
   Sliders,
   ExternalLink,
   Info,
@@ -34,6 +35,7 @@ export default function App() {
   const [licenseKeyInput, setLicenseKeyInput] = useState<string>('');
   const [emailInput, setEmailInput] = useState<string>('');
   const [passwordInput, setPasswordInput] = useState<string>('');
+  const [showPasswordInput, setShowPasswordInput] = useState(false);
   const [activationLoading, setActivationLoading] = useState<boolean>(false);
   const [activationError, setActivationError] = useState<string | null>(null);
 
@@ -241,14 +243,24 @@ export default function App() {
 
             <div>
               <label className="block text-xs font-medium text-slate-300 mb-1">Account Password</label>
-              <input
-                type="password"
-                required
-                autoComplete="current-password"
-                value={passwordInput}
-                onChange={(e) => setPasswordInput(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500"
-              />
+              <div className="relative">
+                <input
+                  type={showPasswordInput ? 'text' : 'password'}
+                  required
+                  autoComplete="current-password"
+                  value={passwordInput}
+                  onChange={(e) => setPasswordInput(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 pr-10 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPasswordInput((visible) => !visible)}
+                  aria-label={showPasswordInput ? 'Hide password' : 'Show password'}
+                  className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 hover:text-white"
+                >
+                  {showPasswordInput ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
 
             {activationError && (

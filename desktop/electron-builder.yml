@@ -26,11 +26,14 @@ win:
 mac:
   artifactName: Krypton-macOS-${version}-${arch}.${ext}
   category: public.app-category.utilities
+  hardenedRuntime: true
+  gatekeeperAssess: true
+  notarize: true
+  entitlements: build-resources/entitlements.mac.plist
+  entitlementsInherit: build-resources/entitlements.mac.plist
   electronLanguages:
     - en
-  target:
-    - target: dmg
-      arch: [arm64]
+  target: dmg
 
 dmg:
   title: Krypton AI Security

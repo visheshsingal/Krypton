@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ArrowDown,
   ArrowRight,
@@ -20,7 +20,51 @@ const demoPrompt = 'const apiKey = "sk-proj-abc1234567890def1234567890ghij";';
 
 export default function HomePage() {
   const [prompt, setPrompt] = useState(demoPrompt);
+  const [windowsDownload, setWindowsDownload] = useState<{ available: boolean; downloadUrl?: string }>({
+    available: false,
+  });
+  const [macDownloads, setMacDownloads] = useState<{
+    available: boolean;
+    architectures?: {
+      appleSilicon?: { downloadUrl: string };
+      intel?: { downloadUrl: string };
+    };
+  }>({ available: false });
+  const appleSiliconDownloadUrl = macDownloads.architectures?.appleSilicon?.downloadUrl;
+  const intelDownloadUrl = macDownloads.architectures?.intel?.downloadUrl;
+  const showMacDownloads = macDownloads.available && appleSiliconDownloadUrl && intelDownloadUrl;
   const hasSecret = /sk-(?:proj-)?[a-zA-Z0-9_-]{24,}/.test(prompt);
+
+  useEffect(() => {
+    fetch('/downloads/windows-release.json', { cache: 'no-store' })
+      .then((response) => {
+        if (!response.ok) throw new Error('Windows release metadata is unavailable.');
+        return response.json();
+      })
+      .then((release) => {
+        if (release.available === true && release.downloadUrl) {
+          setWindowsDownload(release);
+        }
+      })
+      .catch((error) => console.error('Could not load Windows download metadata:', error));
+
+    fetch('/downloads/macos-release.json', { cache: 'no-store' })
+      .then((response) => {
+        if (!response.ok) throw new Error('Mac release metadata is unavailable.');
+        return response.json();
+      })
+      .then((release) => {
+        if (
+          release.available === true &&
+          release.architectures?.appleSilicon?.downloadUrl &&
+          release.architectures?.intel?.downloadUrl
+        ) {
+          setMacDownloads(release);
+        }
+      })
+      .catch((error) => console.error('Could not load Mac download metadata:', error));
+  }, []);
+  const showWindowsDownload = windowsDownload.available && windowsDownload.downloadUrl;
 
   const redactedPrompt = prompt.replace(
     /sk-(?:proj-)?[a-zA-Z0-9_-]{24,}/g,
@@ -49,30 +93,52 @@ export default function HomePage() {
               and helps your team use AI more safely.
             </p>
             <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row sm:flex-wrap">
-              <a
-                href="/downloads/Krypton-Security-Setup-1.0.0.exe"
-                download
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-400 px-6 py-3.5 text-sm font-semibold text-slate-950 shadow-[0_0_32px_rgba(56,189,248,0.2)] transition hover:bg-sky-300"
-              >
-                <Download className="h-4 w-4" />
-                Download for Windows
-              </a>
-              <a
-                href="/downloads/Krypton-macOS-1.0.0-arm64.dmg"
-                download
-                className="inline-flex items-center justify-center gap-2 rounded-lg border border-sky-300/30 bg-sky-400/[0.08] px-6 py-3.5 text-sm font-semibold text-sky-100 transition hover:border-sky-300/60 hover:bg-sky-400/[0.14]"
-              >
-                <Download className="h-4 w-4" />
-                macOS Apple silicon
-              </a>
-              <a
-                href="/downloads/Krypton-macOS-1.0.0-x64.tar.xz"
-                download
-                className="inline-flex items-center justify-center gap-2 rounded-lg border border-sky-300/30 bg-sky-400/[0.08] px-6 py-3.5 text-sm font-semibold text-sky-100 transition hover:border-sky-300/60 hover:bg-sky-400/[0.14]"
-              >
-                <Download className="h-4 w-4" />
-                macOS Intel
-              </a>
+              {showWindowsDownload ? (
+                <a
+                  href={windowsDownload.downloadUrl}
+                  download
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-400 px-6 py-3.5 text-sm font-semibold text-slate-950 shadow-[0_0_32px_rgba(56,189,248,0.2)] transition hover:bg-sky-300"
+                >
+                  <Download className="h-4 w-4" />
+                  Download for Windows
+                </a>
+              ) : (
+                <span className="inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-6 py-3.5 text-sm font-semibold text-slate-500">
+                  <Download className="h-4 w-4" />
+                  Windows installer (coming soon)
+                </span>
+              )}
+              {showMacDownloads ? (
+                <>
+                  <a
+                    href={appleSiliconDownloadUrl}
+                    download
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-sky-300/30 bg-sky-400/[0.08] px-6 py-3.5 text-sm font-semibold text-sky-100 transition hover:border-sky-300/60 hover:bg-sky-400/[0.14]"
+                  >
+                    <Download className="h-4 w-4" />
+                    macOS Apple silicon
+                  </a>
+                  <a
+                    href={intelDownloadUrl}
+                    download
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-sky-300/30 bg-sky-400/[0.08] px-6 py-3.5 text-sm font-semibold text-sky-100 transition hover:border-sky-300/60 hover:bg-sky-400/[0.14]"
+                  >
+                    <Download className="h-4 w-4" />
+                    macOS Intel
+                  </a>
+                </>
+              ) : (
+                <>
+                  <span className="inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-6 py-3.5 text-sm font-semibold text-slate-500">
+                    <Download className="h-4 w-4" />
+                    macOS Apple silicon (coming soon)
+                  </span>
+                  <span className="inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-6 py-3.5 text-sm font-semibold text-slate-500">
+                    <Download className="h-4 w-4" />
+                    macOS Intel (coming soon)
+                  </span>
+                </>
+              )}
               <a
                 href="#how-it-works"
                 className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900/70 px-6 py-3.5 text-sm font-medium text-slate-200 transition hover:border-sky-400/40 hover:bg-slate-800"
@@ -82,7 +148,7 @@ export default function HomePage() {
               </a>
             </div>
             <p className="mt-4 text-xs text-slate-500">
-              Windows 10/11 x64 · Separate Apple silicon and Intel Mac installers
+              Windows 10/11 x64 · macOS Apple silicon and Intel downloads pending signed release
             </p>
           </div>
 
@@ -247,45 +313,60 @@ export default function HomePage() {
             </p>
           </div>
           <div className="flex w-full shrink-0 flex-col gap-3 sm:w-auto sm:flex-row">
-            <a
-              href="/downloads/Krypton-Security-Setup-1.0.0.exe"
-              download
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-400 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-sky-300"
-            >
-              <Download className="h-4 w-4" />
-              Windows (.exe)
-            </a>
-            <a
-              href="/downloads/Krypton-macOS-1.0.0-arm64.dmg"
-              download
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-sky-300/30 bg-sky-400/[0.08] px-5 py-3 text-sm font-semibold text-sky-100 transition hover:bg-sky-400/[0.14]"
-            >
-              <Download className="h-4 w-4" />
-              macOS Apple silicon
-            </a>
-            <a
-              href="/downloads/Krypton-macOS-1.0.0-x64.tar.xz"
-              download
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-5 py-3 text-sm font-semibold text-slate-200 transition hover:border-sky-400/40 hover:bg-slate-800"
-            >
-              <Download className="h-4 w-4" />
-              Mac Intel (.tar.xz)
-            </a>
+            {showWindowsDownload ? (
+              <a
+                href={windowsDownload.downloadUrl}
+                download
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-400 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-sky-300"
+              >
+                <Download className="h-4 w-4" />
+                Windows (.exe)
+              </a>
+            ) : (
+              <span className="inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-5 py-3 text-sm font-semibold text-slate-500">
+                <Download className="h-4 w-4" />
+                Windows installer (coming soon)
+              </span>
+            )}
+            {showMacDownloads ? (
+              <>
+                <a
+                  href={appleSiliconDownloadUrl}
+                  download
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-sky-300/30 bg-sky-400/[0.08] px-5 py-3 text-sm font-semibold text-sky-100 transition hover:bg-sky-400/[0.14]"
+                >
+                  <Download className="h-4 w-4" />
+                  macOS Apple silicon (.dmg)
+                </a>
+                <a
+                  href={intelDownloadUrl}
+                  download
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-sky-300/30 bg-sky-400/[0.08] px-5 py-3 text-sm font-semibold text-sky-100 transition hover:bg-sky-400/[0.14]"
+                >
+                  <Download className="h-4 w-4" />
+                  macOS Intel (.dmg)
+                </a>
+              </>
+            ) : (
+              <>
+                <span className="inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-5 py-3 text-sm font-semibold text-slate-500">
+                  <Download className="h-4 w-4" />
+                  macOS Apple silicon (coming soon)
+                </span>
+                <span className="inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-5 py-3 text-sm font-semibold text-slate-500">
+                  <Download className="h-4 w-4" />
+                  macOS Intel (coming soon)
+                </span>
+              </>
+            )}
           </div>
         </div>
         <div className="mx-auto mt-8 flex max-w-6xl flex-col justify-between gap-3 text-xs text-slate-500 sm:flex-row">
-          <span>Windows x64 · macOS Apple silicon or Intel · Requires a valid company license</span>
+          <span>Windows x64 · macOS builds pending Apple signing · Desktop use requires a valid company license</span>
           <span>Download not starting? Check your browser&apos;s download settings.</span>
         </div>
         <p className="mx-auto mt-4 max-w-6xl text-xs leading-5 text-slate-500">
-          The macOS installer is currently unsigned and not notarized. On first
-          launch, macOS may require Control-clicking Krypton in Applications and
-          choosing Open. The app scans only text you submit in its own sandbox.
-        </p>
-        <p className="mx-auto mt-2 max-w-6xl text-xs leading-5 text-slate-500">
-          Intel Mac archive: after downloading, extract it with{' '}
-          <code className="text-slate-300">tar -xJf ~/Downloads/Krypton-macOS-1.0.0-x64.tar.xz -C ~/Downloads</code>,
-          then move the app into Applications.
+          macOS downloads will return when both Apple silicon and Intel DMGs are signed, notarized, and verified for Gatekeeper. We will not ask users to bypass macOS security.
         </p>
       </section>
     </div>

@@ -22,6 +22,8 @@ public/downloads/*.exe
 public/downloads/*.dmg
 public/downloads/*.tar.xz
 public/downloads/*.blockmap
+!public/downloads/Krypton-Security-Setup-*.exe
+!public/downloads/Krypton-macOS-*.dmg
 
 # Generated files
 *.tsbuildinfo
