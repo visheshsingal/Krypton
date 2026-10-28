@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AlertTriangle, Eye, EyeOff, HardDrive, KeyRound, LogOut, Shield, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, Download, Eye, EyeOff, HardDrive, KeyRound, LogOut, RefreshCw, Shield, ShieldCheck } from 'lucide-react';
 
 type DesktopState = {
   license?: string;
@@ -43,7 +43,7 @@ type WebsiteProtectionAvailability = {
 };
 
 type KryptonDesktopBridge = {
-  getDeviceInfo: () => Promise<{ deviceId?: string; deviceName?: string; osVersion?: string }>;
+  getDeviceInfo: () => Promise<{ deviceId?: string; deviceName?: string; osVersion?: string; appVersion?: string; platform?: string }>;
   getStoredState: () => Promise<DesktopState | null>;
   getUsbMonitorStatus: () => Promise<UsbMonitorStatus>;
   setUsbMonitoringEnabled: (enabled: boolean) => Promise<{ success: boolean; status?: UsbMonitorStatus; error?: string }>;
@@ -69,6 +69,14 @@ type KryptonDesktopBridge = {
   activate: (data: { licenseKey: string; email: string; password: string }) => Promise<ActivationResult>;
   logout: () => Promise<{ success: boolean; warning?: string }>;
   openExternal: (url: string) => Promise<void>;
+  checkForUpdates: () => Promise<{
+    supported: boolean;
+    currentVersion: string;
+    latestVersion?: string;
+    updateAvailable: boolean;
+    signatureStatus?: string;
+  }>;
+  installUpdate: () => Promise<{ success: boolean; cancelled?: boolean; error?: string }>;
 };
 
 const desktopBridge = (window as Window & { kryptonDesktop?: KryptonDesktopBridge }).kryptonDesktop;
@@ -101,6 +109,11 @@ export default function App() {
   const [protectedBrowserLoading, setProtectedBrowserLoading] = useState(false);
   const [protectedBrowserMessage, setProtectedBrowserMessage] = useState<string | null>(null);
   const [protectedBrowserError, setProtectedBrowserError] = useState<string | null>(null);
+  const [updateInfo, setUpdateInfo] = useState<Awaited<ReturnType<KryptonDesktopBridge['checkForUpdates']>> | null>(null);
+  const [updateChecking, setUpdateChecking] = useState(false);
+  const [updateInstalling, setUpdateInstalling] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+  const [updateMessage, setUpdateMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!desktopBridge) {
@@ -176,6 +189,62 @@ export default function App() {
       window.clearInterval(interval);
     };
   }, [isActivated]);
+
+  useEffect(() => {
+    if (!desktopBridge || deviceInfo?.platform !== 'win32') return;
+    let active = true;
+    void desktopBridge.checkForUpdates()
+      .then((result) => {
+        if (active) setUpdateInfo(result);
+      })
+      .catch((error: unknown) => {
+        if (active) setUpdateError(error instanceof Error ? error.message : 'Could not check for updates.');
+      });
+    return () => {
+      active = false;
+    };
+  }, [deviceInfo?.platform]);
+
+  async function handleCheckForUpdates() {
+    if (!desktopBridge) return;
+    setUpdateChecking(true);
+    setUpdateError(null);
+    setUpdateMessage(null);
+    try {
+      const result = await desktopBridge.checkForUpdates();
+      setUpdateInfo(result);
+      if (!result.supported) {
+        setUpdateMessage('In-app updates are available in the installed Windows version.');
+      } else if (!result.updateAvailable) {
+        setUpdateMessage('You’re using the latest version.');
+      }
+    } catch (error) {
+      setUpdateError(error instanceof Error ? error.message : 'Could not check for updates.');
+    } finally {
+      setUpdateChecking(false);
+    }
+  }
+
+  async function handleInstallUpdate() {
+    if (!desktopBridge) return;
+    setUpdateInstalling(true);
+    setUpdateError(null);
+    setUpdateMessage('Downloading and verifying the update…');
+    try {
+      const result = await desktopBridge.installUpdate();
+      if (result.error) {
+        setUpdateError(result.error);
+        setUpdateMessage(null);
+      } else if (result.cancelled) {
+        setUpdateMessage(null);
+      }
+    } catch (error) {
+      setUpdateError(error instanceof Error ? error.message : 'Could not install the update.');
+      setUpdateMessage(null);
+    } finally {
+      setUpdateInstalling(false);
+    }
+  }
 
   async function handleOpenProtectedAiSite() {
     if (!desktopBridge) return;
@@ -425,6 +494,31 @@ export default function App() {
           <p className="mt-6 text-center text-xs text-slate-500">
             Ask your company administrator for your account and license key.
           </p>
+          {deviceInfo?.platform === 'win32' && (
+            <div className="mt-5 border-t border-slate-800 pt-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[11px] text-slate-500">
+                  Version {updateInfo?.currentVersion || deviceInfo.appVersion || '—'}
+                  {updateInfo?.updateAvailable && updateInfo.latestVersion ? ` · ${updateInfo.latestVersion} available` : ''}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void (updateInfo?.updateAvailable ? handleInstallUpdate() : handleCheckForUpdates())}
+                  disabled={updateChecking || updateInstalling}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-sky-300/20 bg-sky-400/10 px-3 py-2 text-xs font-semibold text-sky-100 hover:bg-sky-400/20 disabled:opacity-50"
+                >
+                  {updateChecking || updateInstalling
+                    ? <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    : updateInfo?.updateAvailable
+                      ? <Download className="h-3.5 w-3.5" />
+                      : <RefreshCw className="h-3.5 w-3.5" />}
+                  {updateChecking ? 'Checking…' : updateInstalling ? 'Downloading…' : updateInfo?.updateAvailable ? 'Update now' : 'Check for updates'}
+                </button>
+              </div>
+              {updateMessage && <p role="status" className="mt-2 text-[11px] text-emerald-300">{updateMessage}</p>}
+              {updateError && <p role="alert" className="mt-2 text-[11px] text-rose-300">{updateError}</p>}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -693,6 +787,48 @@ export default function App() {
             </p>
           </div>
         </section>
+
+        {deviceInfo?.platform === 'win32' && (
+          <section className="mt-5 overflow-hidden rounded-2xl border border-slate-800/80 bg-[#0b1220]">
+            <div className="flex flex-wrap items-center justify-between gap-4 p-5 sm:p-7">
+              <div>
+                <h2 className="text-sm font-semibold text-white">Krypton updates</h2>
+                <p className="mt-1 text-xs text-slate-400">
+                  Installed version {updateInfo?.currentVersion || deviceInfo.appVersion || '—'}
+                  {updateInfo?.updateAvailable && updateInfo.latestVersion
+                    ? ` · Version ${updateInfo.latestVersion} is ready`
+                    : ''}
+                </p>
+                {updateMessage && <p role="status" className="mt-2 text-xs text-emerald-300">{updateMessage}</p>}
+                {updateError && <p role="alert" className="mt-2 text-xs text-rose-300">{updateError}</p>}
+                {updateInfo?.updateAvailable && updateInfo.signatureStatus === 'unsigned' && (
+                  <p className="mt-2 text-[11px] text-amber-200">
+                    This release is unsigned; Windows may show its standard publisher warning.
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => void (updateInfo?.updateAvailable ? handleInstallUpdate() : handleCheckForUpdates())}
+                disabled={updateChecking || updateInstalling}
+                className="inline-flex items-center gap-2 rounded-lg border border-sky-300/20 bg-sky-400/10 px-4 py-2.5 text-sm font-semibold text-sky-100 transition hover:bg-sky-400/20 disabled:cursor-wait disabled:opacity-50"
+              >
+                {updateChecking || updateInstalling
+                  ? <RefreshCw className="h-4 w-4 animate-spin" />
+                  : updateInfo?.updateAvailable
+                    ? <Download className="h-4 w-4" />
+                    : <RefreshCw className="h-4 w-4" />}
+                {updateChecking
+                  ? 'Checking…'
+                  : updateInstalling
+                    ? 'Downloading update…'
+                    : updateInfo?.updateAvailable
+                      ? 'Update now'
+                      : 'Check for updates'}
+              </button>
+            </div>
+          </section>
+        )}
       </main>
     </div>
   );

@@ -9,6 +9,7 @@
   "packageSha256Checksum": "a73f97a17a4ccc206e5c25d15e315b643d6e0fb41b2050e7298a363b4497bcad",
   "installerName": "Krypton-Security-Setup-1.0.0.exe",
   "installerType": "nsis",
+  "installerDownloadUrl": "/downloads/Krypton-Security-Setup-1.0.0.exe",
   "downloadUrl": "/downloads/Krypton-Windows-x64-1.0.0.zip",
   "fileSizeBytes": 79604056,
   "sha256Checksum": "a73f97a17a4ccc206e5c25d15e315b643d6e0fb41b2050e7298a363b4497bcad",

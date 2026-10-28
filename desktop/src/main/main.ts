@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron';
 import crypto from 'node:crypto';
 import fsSync from 'node:fs';
 import fs from 'fs/promises';
@@ -7,6 +7,7 @@ import os from 'os';
 import { spawn } from 'node:child_process';
 import extractZip from 'extract-zip';
 import { DesktopStore } from './store';
+import { compareAppVersions, parseWindowsReleaseManifest, WindowsReleaseManifest } from './app-update';
 import { enumerateRemovableUsbVolumes, UsbActivityEvent, UsbDlpMonitor } from './usb-dlp-monitor';
 import { PromptSecurityEngine } from '../engine/scanner';
 import { SecurityPolicyDTO } from '@krypton/shared';
@@ -43,9 +44,21 @@ const browserEventTimes = new Map<ManagedBrowserKind, number[]>();
 let shuttingDown = false;
 const productionBackendUrl = 'https://krypton-ten-theta.vercel.app/api';
 const productionWebsiteUrl = 'https://krypton-ten-theta.vercel.app';
+const windowsReleaseManifestUrl = `${productionWebsiteUrl}/downloads/windows-release.json`;
 const extensionDownloadUrl = `${productionWebsiteUrl}/downloads/krypton-browser-extension.zip`;
 const extensionMetadataUrl = `${productionWebsiteUrl}/downloads/browser-extension-release.json`;
 const extensionFiles = ['background.js', 'content.js', 'manifest.json', 'popup.html', 'popup.js'];
+const MAX_UPDATE_INSTALLER_BYTES = 250 * 1024 * 1024;
+
+async function fetchWindowsRelease(): Promise<WindowsReleaseManifest> {
+  const response = await fetch(windowsReleaseManifestUrl, {
+    cache: 'no-store',
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!response.ok) throw new Error(`Update check failed (HTTP ${response.status}).`);
+
+  return parseWindowsReleaseManifest(await response.json());
+}
 
 function findBrowserForExtensionSetup(browser: ManagedBrowserKind): string | null {
   if (process.platform === 'win32') return findManagedBrowserExecutable(browser) || null;
@@ -457,6 +470,108 @@ function setupIpcHandlers() {
 
   // Version
   ipcMain.handle('desktop:get-version', () => app.getVersion());
+  ipcMain.handle('desktop:check-for-updates', async () => {
+    const currentVersion = app.getVersion();
+    if (process.platform !== 'win32' || !app.isPackaged) {
+      return { supported: false, currentVersion, updateAvailable: false };
+    }
+
+    const release = await fetchWindowsRelease();
+    const versionComparison = compareAppVersions(currentVersion, release.version);
+    if (versionComparison < 0) {
+      throw new Error('Published update information is older than this installed version. Try again after the release manifest is refreshed.');
+    }
+    return {
+      supported: true,
+      currentVersion,
+      latestVersion: release.version,
+      updateAvailable: versionComparison > 0,
+      signatureStatus: release.signatureStatus,
+    };
+  });
+  ipcMain.handle('desktop:install-update', async () => {
+    if (process.platform !== 'win32' || !app.isPackaged) {
+      return { success: false, error: 'In-app updates are currently available for the installed Windows app only.' };
+    }
+
+    const currentVersion = app.getVersion();
+    const release = await fetchWindowsRelease();
+    if (compareAppVersions(currentVersion, release.version) >= 0) {
+      return { success: false, error: 'Krypton is already up to date.' };
+    }
+
+    const unsignedWarning = release.signatureStatus === 'unsigned'
+      ? '\n\nThis installer is not code-signed. Windows may show its normal publisher warning. Krypton will not bypass or disable Windows security.'
+      : '';
+    const confirmation = await dialog.showMessageBox({
+      type: 'info',
+      title: 'Update Krypton',
+      message: `Install Krypton ${release.version}?`,
+      detail: `The update will be downloaded and verified, then Krypton will close and the setup wizard will update the existing installation. Your sign-in and settings are kept.${unsignedWarning}`,
+      buttons: ['Update now', 'Later'],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+    });
+    if (confirmation.response !== 0) return { success: false, cancelled: true };
+
+    const installerUrl = new URL(release.installerDownloadUrl, productionWebsiteUrl);
+    if (installerUrl.origin !== productionWebsiteUrl || installerUrl.pathname !== `/downloads/${release.installerName}`) {
+      throw new Error('The update download location is invalid.');
+    }
+
+    const response = await fetch(installerUrl, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(5 * 60_000),
+    });
+    if (!response.ok || !response.body) {
+      throw new Error(`Could not download the update (HTTP ${response.status}).`);
+    }
+    const declaredLength = Number(response.headers.get('content-length') || 0);
+    if (declaredLength > MAX_UPDATE_INSTALLER_BYTES) {
+      await response.body.cancel();
+      throw new Error('The update installer is larger than expected.');
+    }
+
+    const reader = response.body.getReader();
+    const chunks: Buffer[] = [];
+    const checksum = crypto.createHash('sha256');
+    let totalBytes = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        totalBytes += value.byteLength;
+        if (totalBytes > MAX_UPDATE_INSTALLER_BYTES) {
+          await reader.cancel();
+          throw new Error('The update installer is larger than expected.');
+        }
+        const chunk = Buffer.from(value);
+        chunks.push(chunk);
+        checksum.update(chunk);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    if (
+      totalBytes === 0 ||
+      checksum.digest('hex').toLowerCase() !== release.installerSha256Checksum.toLowerCase()
+    ) {
+      throw new Error('The downloaded update failed its integrity check. Nothing was installed.');
+    }
+
+    const installerPath = path.join(os.tmpdir(), `Krypton-Security-Setup-${release.version}-${process.pid}.exe`);
+    await fs.writeFile(installerPath, Buffer.concat(chunks, totalBytes));
+    const installer = spawn(installerPath, [], { detached: true, stdio: 'ignore', windowsHide: false });
+    await new Promise<void>((resolve, reject) => {
+      installer.once('error', reject);
+      installer.once('spawn', resolve);
+    });
+    installer.unref();
+    app.quit();
+    return { success: true };
+  });
 
   // External link
   ipcMain.handle('desktop:open-external', (_, url: string) => {

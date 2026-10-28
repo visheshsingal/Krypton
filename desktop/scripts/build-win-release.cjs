@@ -191,6 +191,7 @@ async function createWindowsPackage(installerPath, installerName, installerCheck
     `2. Run ${installerName}.`,
     '3. Follow the setup wizard. Krypton installs for your Windows user and does not require administrator access.',
     '4. Launch Krypton from the Start menu or desktop shortcut and activate with your company credentials.',
+    'If Krypton is already installed for this Windows user, run this same setup file to update it in place. Do not uninstall the existing version first; your settings and sign-in data are kept.',
     '',
     'UNINSTALL',
     'Open Settings > Apps > Installed apps, select Krypton AI Security, and choose Uninstall.',
@@ -288,6 +289,7 @@ async function main() {
     const packageInfo = await createWindowsPackage(installerPath, installerName, installerChecksum);
     const publishedPackagePath = path.join(downloadsDir, packageInfo.packageName);
     fs.copyFileSync(packageInfo.packagePath, publishedPackagePath);
+    fs.copyFileSync(installerPath, path.join(downloadsDir, installerName));
 
     const manifest = {
       available: true,
@@ -304,6 +306,7 @@ async function main() {
       packageSha256Checksum: packageInfo.packageChecksum,
       installerName,
       installerType: 'nsis',
+      installerDownloadUrl: `/downloads/${installerName}`,
       downloadUrl: `/downloads/${packageInfo.packageName}`,
       fileSizeBytes: packageInfo.packageSize,
       sha256Checksum: packageInfo.packageChecksum,
@@ -315,7 +318,6 @@ async function main() {
     };
     fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
     fs.writeFileSync(backendManifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-    fs.rmSync(path.join(downloadsDir, installerName), { force: true });
     console.log(`Created the Windows installer ZIP and release metadata in ${downloadsDir}`);
     if (signatureStatus === 'unsigned') {
       console.warn('This release is unsigned; Windows SmartScreen may show a publisher warning. No Windows security settings are changed.');

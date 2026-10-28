@@ -1,6 +1,6 @@
 {
   "name": "krypton-desktop",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Krypton AI Data Loss Prevention & Prompt Security Desktop Agent",
   "author": "Krypton Security",
   "main": "dist-electron/main/main.js",

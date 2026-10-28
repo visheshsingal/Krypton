@@ -34,6 +34,14 @@ export interface KryptonDesktopBridge {
   logout: () => Promise<{ success: boolean; warning?: string }>;
   openExternal: (url: string) => Promise<void>;
   getAppVersion: () => Promise<string>;
+  checkForUpdates: () => Promise<{
+    supported: boolean;
+    currentVersion: string;
+    latestVersion?: string;
+    updateAvailable: boolean;
+    signatureStatus?: string;
+  }>;
+  installUpdate: () => Promise<{ success: boolean; cancelled?: boolean; error?: string }>;
 }
 
 const bridge: KryptonDesktopBridge = {
@@ -54,6 +62,8 @@ const bridge: KryptonDesktopBridge = {
   logout: () => ipcRenderer.invoke('desktop:logout'),
   openExternal: (url) => ipcRenderer.invoke('desktop:open-external', url),
   getAppVersion: () => ipcRenderer.invoke('desktop:get-version'),
+  checkForUpdates: () => ipcRenderer.invoke('desktop:check-for-updates'),
+  installUpdate: () => ipcRenderer.invoke('desktop:install-update'),
 };
 
 contextBridge.exposeInMainWorld('kryptonDesktop', bridge);

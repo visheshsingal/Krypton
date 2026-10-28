@@ -1,5 +1,9 @@
 # Windows managed-browser scope and native filtering status
 
+## Windows desktop updates
+
+The installed Krypton app checks `public/downloads/windows-release.json` for a newer x64 release. In-app updates download the versioned NSIS installer over HTTPS, verify its SHA-256 against the release metadata, ask for confirmation, then launch the installer and close Krypton. The same per-user NSIS installer updates the existing install directory; uninstalling first is not required, and app data is kept. The Windows ZIP remains available for first-time installs and manual updates by extracting it and running its setup file. Publish the versioned setup executable alongside the ZIP and update the release manifest when publishing a release. Unsigned releases may still show Windows SmartScreen/publisher warnings; Krypton does not bypass Windows security.
+
 Krypton does **not** have an operating-system DNS or network filter. On Windows, the desktop app can launch installed Chrome or Edge with a separate Krypton-managed browser profile and a local DevTools Protocol connection. The existing prompt scanner inspects selected AI-site HTTPS POST request bodies locally and cancels matching requests before they are sent when policy says to block. The UI and release metadata describe this as managed-profile-only protection.
 
 No browser extension is used or required. Ordinary Chrome/Edge profiles and other applications are not inspected; only the browser process Krypton starts with its dedicated profile and DevTools endpoint is protected.
