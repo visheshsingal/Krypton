@@ -11,7 +11,7 @@ export interface ISecurityEvent extends Document {
   riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
   ruleCode: string;
   ruleName: string;
-  category:
+  category?:
     | 'api_key'
     | 'private_key'
     | 'password'
@@ -67,7 +67,6 @@ const SecurityEventSchema = new Schema<ISecurityEvent>(
         'custom_keyword',
         'custom_regex',
       ],
-      required: true,
       index: true,
     },
     actionTaken: {

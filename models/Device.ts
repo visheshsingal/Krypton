@@ -12,6 +12,8 @@ export interface IDevice extends Document {
   lastHeartbeatAt: Date;
   activatedAt: Date;
   revokedAt?: Date;
+  usbMonitoringConsentAt?: Date;
+  usbMonitoringConsentVersion?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -69,6 +71,15 @@ const DeviceSchema = new Schema<IDevice>(
     },
     revokedAt: {
       type: Date,
+    },
+    usbMonitoringConsentAt: {
+      type: Date,
+      default: null,
+    },
+    usbMonitoringConsentVersion: {
+      type: String,
+      default: null,
+      maxlength: 32,
     },
   },
   {

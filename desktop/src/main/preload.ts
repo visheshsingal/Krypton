@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { UsbMonitorStatus } from './usb-dlp-monitor';
 
 export interface KryptonDesktopBridge {
   getDeviceInfo: () => Promise<any>;
@@ -24,6 +25,8 @@ export interface KryptonDesktopBridge {
   }>;
   copyText: (value: string) => Promise<{ success: boolean }>;
   getExtensionStatus: () => Promise<Record<string, unknown>>;
+  getUsbMonitorStatus: () => Promise<UsbMonitorStatus>;
+  setUsbMonitoringEnabled: (enabled: boolean) => Promise<{ success: boolean; status?: UsbMonitorStatus; error?: string }>;
   activate: (data: { licenseKey: string; email: string; password: string }) => Promise<any>;
   heartbeat: () => Promise<any>;
   scanPrompt: (prompt: string) => Promise<any>;
@@ -42,6 +45,8 @@ const bridge: KryptonDesktopBridge = {
   downloadBrowserExtension: (browser) => ipcRenderer.invoke('desktop:download-browser-extension', browser),
   copyText: (value) => ipcRenderer.invoke('desktop:copy-text', value),
   getExtensionStatus: () => ipcRenderer.invoke('desktop:get-extension-status'),
+  getUsbMonitorStatus: () => ipcRenderer.invoke('desktop:get-usb-monitor-status'),
+  setUsbMonitoringEnabled: (enabled) => ipcRenderer.invoke('desktop:set-usb-monitoring', enabled),
   activate: (data) => ipcRenderer.invoke('desktop:activate', data),
   heartbeat: () => ipcRenderer.invoke('desktop:heartbeat'),
   scanPrompt: (prompt) => ipcRenderer.invoke('desktop:scan-prompt', prompt),

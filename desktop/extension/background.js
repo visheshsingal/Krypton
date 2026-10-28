@@ -53,7 +53,7 @@ async function callApi(path, token, body) {
 
 async function heartbeat() {
   const state = await getState();
-  if (!state.sessionToken) return { status: 'not_installed', authorized: false, canDisconnect: false };
+  if (!state.sessionToken) return { status: 'not_installed', authorized: false };
   try {
     const data = await callApi('session', state.sessionToken);
     await updateState({
@@ -65,12 +65,11 @@ async function heartbeat() {
     return {
       status: data.status,
       authorized: data.protectionActive === true,
-      canDisconnect: true,
     };
   } catch (error) {
     if (error.status === 401 || error.status === 403) {
       await updateState({ authorized: false, status: error.code || 'license_invalid' });
-      return { status: error.code || 'license_invalid', authorized: false, canDisconnect: true };
+      return { status: error.code || 'license_invalid', authorized: false };
     }
     const inOfflineGrace = state.lastValidatedAt > 0 &&
       Date.now() - state.lastValidatedAt <= Math.min(state.offlineGraceHours, 720) * 60 * 60 * 1000 &&
@@ -82,7 +81,6 @@ async function heartbeat() {
     return {
       status: inOfflineGrace ? 'offline' : 'license_invalid',
       authorized: inOfflineGrace,
-      canDisconnect: true,
     };
   }
 }
@@ -156,8 +154,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           licenseKey: message.licenseKey,
-          email: message.email,
-          password: message.password,
           installationId,
           browser: navigator.userAgent.includes('Edg/') ? 'edge' : 'chrome',
         }),
@@ -184,37 +180,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message?.type === 'DISCONNECT_BROWSER') {
-    if (sender.url !== chrome.runtime.getURL('popup.html')) return false;
-    void (async () => {
-      const state = await getState();
-      if (state.sessionToken) {
-        const response = await fetch(`${API_BASE}/browser-activate`, {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${state.sessionToken}` },
-        });
-        if (!response.ok) throw new Error('Could not revoke this browser session.');
-      }
-      await updateState({
-        sessionToken: '',
-        sessionExpiresAt: '',
-        offlineGraceHours: 72,
-        policy: null,
-        authorized: false,
-        status: 'not_installed',
-        lastValidatedAt: 0,
-      });
-      sendResponse({ success: true });
-    })().catch((error) => sendResponse({ success: false, error: error.message }));
-    return true;
-  }
-
   if (message?.type === 'REFRESH_STATUS') {
     void heartbeat().then(sendResponse);
     return true;
   }
 
-  if (message?.type === 'BLOCKED_EVENT') {
+  if (message?.type === 'BLOCKED_EVENT' || message?.type === 'PROMPT_SUBMISSION') {
     const siteHost = sender.tab?.url ? new URL(sender.tab.url).hostname : '';
     const event = message.event || {};
     if (
@@ -234,6 +205,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return;
       }
       await callApi('events', state.sessionToken, {
+        ...(message.type === 'PROMPT_SUBMISSION' ? { eventType: 'prompt_submission' } : {}),
         hostname: siteHost,
         riskLevel: event.riskLevel,
         actionTaken: event.actionTaken,
@@ -241,6 +213,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         ruleName: event.ruleName,
         category: event.category,
         explanation: event.explanation,
+        ...(state.policy?.redactedPromptLoggingEnabled === true &&
+          typeof event.redactedPreview === 'string'
+          ? { redactedPreview: event.redactedPreview }
+          : {}),
       });
       sendResponse({ accepted: true });
     })().catch((error) => {

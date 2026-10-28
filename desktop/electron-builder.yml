@@ -16,6 +16,7 @@ compression: maximum
 artifactName: Krypton-${os}-${version}-${arch}.${ext}
 
 win:
+  icon: build-resources/windows-icon.ico
   artifactName: Krypton-Security-Setup-${version}.${ext}
   target:
     - target: nsis
@@ -41,10 +42,14 @@ dmg:
 
 nsis:
   oneClick: false
-  perMachine: true
-  allowElevation: true
+  perMachine: false
+  allowElevation: false
   allowToChangeInstallationDirectory: false
   createDesktopShortcut: always
   createStartMenuShortcut: true
   shortcutName: Krypton AI Security
   uninstallDisplayName: Krypton AI Security
+  installerSidebar: build-resources/windows-installer-sidebar.bmp
+  uninstallerSidebar: build-resources/windows-installer-sidebar.bmp
+  installerIcon: build-resources/windows-icon.ico
+  uninstallerIcon: build-resources/windows-icon.ico

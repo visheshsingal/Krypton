@@ -9,6 +9,7 @@ export interface IBrowserExtensionSession extends Document {
   browserInstallationId?: string;
   browser: 'chrome' | 'edge';
   status: BrowserExtensionStatus;
+  adminRevoked?: boolean;
   pairingCodeHash?: string;
   pairingExpiresAt?: Date;
   sessionTokenHash?: string;
@@ -28,6 +29,7 @@ const BrowserExtensionSessionSchema = new Schema<IBrowserExtensionSession>(
     browserInstallationId: { type: String, trim: true },
     browser: { type: String, enum: ['chrome', 'edge'], required: true },
     status: { type: String, enum: ['pending', 'active', 'revoked'], required: true, index: true },
+    adminRevoked: { type: Boolean, default: false, index: true },
     pairingCodeHash: { type: String, select: false },
     pairingExpiresAt: { type: Date },
     sessionTokenHash: { type: String, select: false },

@@ -10,14 +10,13 @@
       p { color: #94a3b8; font-size: 12px; }
       label { display: block; margin: 14px 0 5px; font-size: 12px; color: #cbd5e1; }
       input { box-sizing: border-box; width: 100%; padding: 10px; border: 1px solid #334155; border-radius: 8px; background: #0f172a; color: #fff; font: 13px monospace; }
-      .password-toggle { display: flex; align-items: center; gap: 7px; color: #94a3b8; font-size: 11px; }
-      .password-toggle input { width: auto; }
       button { width: 100%; margin-top: 12px; padding: 10px; border: 0; border-radius: 8px; background: #38bdf8; color: #020617; font-weight: 700; cursor: pointer; }
       button:disabled { opacity: .5; cursor: wait; }
       [role="status"] { margin-top: 12px; font-size: 12px; }
       [hidden] { display: none !important; }
       .active { color: #6ee7b7; }
       .error { color: #fca5a5; }
+      .note { margin-top: 8px; font-size: 11px; line-height: 1.5; }
     </style>
   </head>
   <body>
@@ -31,14 +30,9 @@
     <form id="account-form" hidden>
       <label for="license-key">Company license key</label>
       <input id="license-key" name="license-key" autocomplete="off" required>
-      <label for="account-email">Krypton account email</label>
-      <input id="account-email" name="account-email" type="email" autocomplete="username" required>
-      <label for="account-password">Password</label>
-      <input id="account-password" name="account-password" type="password" autocomplete="current-password" required>
-      <label class="password-toggle"><input id="show-password" type="checkbox"> Show password</label>
-      <button id="account-activate-button" type="submit">Sign in and activate</button>
+      <p class="note">This browser will be registered under your company administrator. No employee email or password is needed.</p>
+      <button id="account-activate-button" type="submit">Register browser</button>
     </form>
-    <button id="disconnect-button" type="button" hidden>Disconnect account</button>
     <script src="popup.js"></script>
   </body>
 </html>

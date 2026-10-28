@@ -90,7 +90,7 @@ export default function HomePage() {
                   className="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-400 px-6 py-3.5 text-sm font-semibold text-slate-950 shadow-[0_0_32px_rgba(56,189,248,0.2)] transition hover:bg-sky-300"
                 >
                   <Download className="h-4 w-4" />
-                  Download for Windows
+                  Download Windows package (.zip)
                 </a>
               ) : (
                 <span className="inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-6 py-3.5 text-sm font-semibold text-slate-500">
@@ -140,7 +140,7 @@ export default function HomePage() {
               </a>
             </div>
             <p className="mt-4 text-xs text-slate-500">
-              Browser extension ZIP is available now · macOS Desktop installer is not released
+              Windows setup is distributed as a ZIP · macOS Desktop installer is not released
             </p>
           </div>
 
@@ -311,7 +311,7 @@ export default function HomePage() {
                 className="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-400 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-sky-300"
               >
                 <Download className="h-4 w-4" />
-                Windows (.exe)
+                Windows installer package (.zip)
               </a>
             ) : (
               <span className="inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-5 py-3 text-sm font-semibold text-slate-500">
@@ -355,7 +355,7 @@ export default function HomePage() {
           </div>
         </div>
         <div className="mx-auto mt-8 flex max-w-6xl flex-col justify-between gap-3 text-xs text-slate-500 sm:flex-row">
-          <span>Extension ZIP downloads now · macOS Desktop installer is not available · activation requires a valid company license</span>
+          <span>Windows setup ZIP · macOS Desktop installer is not available · activation requires a valid company license</span>
           <span>Download not starting? Check your browser&apos;s download settings.</span>
         </div>
         <p className="mx-auto mt-4 max-w-6xl text-xs leading-5 text-slate-500">

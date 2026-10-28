@@ -23,6 +23,17 @@ export async function POST(req: NextRequest) {
     }
 
     const now = new Date();
+    const adminRevokedSession = await BrowserExtensionSession.findOne({
+      browserInstallationId: installationId,
+      adminRevoked: true,
+    });
+    if (adminRevokedSession) {
+      return NextResponse.json(
+        { error: 'Your company administrator disabled this browser. Contact them to restore access.' },
+        { status: 403 }
+      );
+    }
+
     const pending = await BrowserExtensionSession.findOne({
       pairingCodeHash: sha256(pairingCode),
       status: 'pending',

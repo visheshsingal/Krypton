@@ -77,7 +77,7 @@ export const SubmitSecurityEventSchema = z.object({
     'pii',
     'custom_keyword',
     'custom_regex',
-  ]),
+  ]).optional(),
   actionTaken: z.enum(['allow', 'warn', 'block']),
   redactedPreview: z.string().max(2000),
   explanation: z.string().max(1000),
@@ -96,6 +96,7 @@ export const UpdatePolicySchema = z.object({
   maxDevicesPerUser: z.number().int().min(1).max(10).optional(),
   offlineGracePeriodHours: z.number().int().min(1).max(720).optional(),
   fullPromptLoggingEnabled: z.boolean().optional(),
+  redactedPromptLoggingEnabled: z.boolean().optional(),
   customRules: z
     .array(
       z.object({

@@ -101,6 +101,7 @@ export interface SecurityPolicyDTO {
   maxDevicesPerUser: number;
   offlineGracePeriodHours: number;
   fullPromptLoggingEnabled: boolean;
+  redactedPromptLoggingEnabled?: boolean;
   updatedAt?: string;
 }
 
@@ -116,7 +117,7 @@ export interface SecurityEventDTO {
   riskLevel: RiskLevel;
   ruleCode: string;
   ruleName: string;
-  category: DetectionCategory;
+  category?: DetectionCategory;
   actionTaken: EnforcementAction;
   redactedPreview: string; // Safe, redacted snippet
   explanation: string;

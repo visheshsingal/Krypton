@@ -35,6 +35,7 @@ export async function GET(req: NextRequest) {
         maxDevicesPerUser: 2,
         offlineGracePeriodHours: 72,
         fullPromptLoggingEnabled: false,
+        redactedPromptLoggingEnabled: false,
         customRules: [],
       });
     }
@@ -61,6 +62,15 @@ export async function PUT(req: NextRequest) {
     await connectDB();
     const companyId = tenant.companyId;
     const body = await req.json();
+    if (
+      !body ||
+      typeof body !== 'object' ||
+      Array.isArray(body) ||
+      (body.redactedPromptLoggingEnabled !== undefined &&
+        typeof body.redactedPromptLoggingEnabled !== 'boolean')
+    ) {
+      return NextResponse.json({ error: 'Invalid security policy update.' }, { status: 400 });
+    }
 
     const policy = await SecurityPolicy.findOneAndUpdate(
       { companyId },

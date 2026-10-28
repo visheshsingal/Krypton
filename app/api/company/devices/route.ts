@@ -66,9 +66,12 @@ export async function GET(req: NextRequest) {
             installed: Boolean(extension?.browserInstallationId),
             connected,
             protectionActive,
+            adminRevoked: extension?.adminRevoked === true,
             browser: extension?.browser || null,
             status: protectionActive
               ? 'Protection Active'
+              : extension?.adminRevoked
+                ? 'Disabled by administrator'
               : entitlement && !entitlement.valid
                 ? entitlement.reason === 'device_revoked' ? 'Device Revoked' : 'License Invalid'
                 : extension?.browserInstallationId

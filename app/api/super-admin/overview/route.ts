@@ -28,6 +28,7 @@ export async function GET(req: NextRequest) {
       totalEvents,
       recentCompanies,
       recentAuditLogs,
+      eventTrend,
     ] = await Promise.all([
       Company.countDocuments(),
       Company.countDocuments({ status: 'active' }),
@@ -36,6 +37,24 @@ export async function GET(req: NextRequest) {
       SecurityEvent.countDocuments(),
       Company.find().sort({ createdAt: -1 }).limit(5),
       AuditLog.find().sort({ timestamp: -1 }).limit(10),
+      (() => {
+        const start = new Date();
+        start.setUTCHours(0, 0, 0, 0);
+        start.setUTCDate(start.getUTCDate() - 6);
+        return SecurityEvent.aggregate([
+          { $match: { timestamp: { $gte: start } } },
+          {
+            $group: {
+              _id: {
+                day: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp', timezone: 'UTC' } },
+                action: '$actionTaken',
+              },
+              count: { $sum: 1 },
+            },
+          },
+          { $sort: { '_id.day': 1 } },
+        ]);
+      })(),
     ]);
 
     let totalLicensedSeats = 0;
@@ -59,6 +78,11 @@ export async function GET(req: NextRequest) {
       },
       recentCompanies,
       recentAuditLogs,
+      eventTrend: eventTrend.map((entry) => ({
+        day: entry._id.day,
+        action: entry._id.action,
+        count: entry.count,
+      })),
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

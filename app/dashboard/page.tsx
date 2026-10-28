@@ -9,9 +9,7 @@ import {
   ShieldAlert,
   Users,
   Laptop,
-  Key,
-  Sliders,
-  FileText,
+  HardDrive,
   AlertTriangle,
   RefreshCw,
   Plus,
@@ -37,14 +35,20 @@ export default function CompanyDashboard() {
   const [devices, setDevices] = useState<any[]>([]);
   const [policy, setPolicy] = useState<any>(null);
   const [events, setEvents] = useState<any[]>([]);
+  const [usbEvents, setUsbEvents] = useState<any[]>([]);
+  const [usbMonitoredDevices, setUsbMonitoredDevices] = useState<any[]>([]);
   const [analytics, setAnalytics] = useState<any>(null);
-  const [auditLogs, setAuditLogs] = useState<any[]>([]);
-
-  const [activeTab, setActiveTab] = useState<'overview' | 'employees' | 'devices' | 'policy' | 'incidents' | 'audit'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'employees' | 'devices' | 'incidents' | 'usb'>('overview');
+  const [policySaveError, setPolicySaveError] = useState<string | null>(null);
 
   // Filter state for incidents
   const [severityFilter, setSeverityFilter] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState<string>('');
+  const [actionFilter, setActionFilter] = useState<string>('');
+  const [teamSearch, setTeamSearch] = useState('');
+  const [deviceSearch, setDeviceSearch] = useState('');
+  const [usbSearch, setUsbSearch] = useState('');
+  const [usbEventFilter, setUsbEventFilter] = useState('');
 
   // Invite Modal
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -53,7 +57,6 @@ export default function CompanyDashboard() {
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteMessage, setInviteMessage] = useState<string | null>(null);
 
-  // Custom Rule Form
   const [newRuleCode, setNewRuleCode] = useState('');
   const [newRuleName, setNewRuleName] = useState('');
   const [newRulePattern, setNewRulePattern] = useState('');
@@ -87,14 +90,14 @@ export default function CompanyDashboard() {
     try {
       const headers = { Authorization: `Bearer ${token}` };
 
-      const [resOverview, resEmp, resDev, resPol, resEvt, resAna, resLogs] = await Promise.all([
+      const [resOverview, resEmp, resDev, resPol, resEvt, resAna, resUsb] = await Promise.all([
         fetch('/api/company/overview', { headers }),
         fetch('/api/company/employees', { headers }),
         fetch('/api/company/devices', { headers }),
         fetch('/api/company/policy', { headers }),
         fetch('/api/company/events', { headers }),
         fetch('/api/company/analytics', { headers }),
-        fetch('/api/company/audit-logs', { headers }),
+        fetch('/api/company/usb-events', { headers }),
       ]);
 
       if (resOverview.ok) setCompanyData(await resOverview.json());
@@ -118,9 +121,10 @@ export default function CompanyDashboard() {
       if (resAna.ok) {
         setAnalytics(await resAna.json());
       }
-      if (resLogs.ok) {
-        const d = await resLogs.json();
-        setAuditLogs(d.logs || []);
+      if (resUsb.ok) {
+        const data = await resUsb.json();
+        setUsbEvents(data.events || []);
+        setUsbMonitoredDevices(data.monitoredDevices || []);
       }
     } catch (err) {
       console.error('Failed to load company data:', err);
@@ -224,15 +228,66 @@ export default function CompanyDashboard() {
     }
   };
 
+  const handleRevokeExtension = async (deviceId: string) => {
+    if (!confirm('Disable this browser extension? Only a company administrator can re-enable it.')) return;
+    const token = localStorage.getItem('krypton_token');
+    if (!token) return;
+    try {
+      const response = await fetch('/api/desktop/extension/session', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ deviceId, action: 'admin_disable' }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        window.alert(result.error || 'Could not disable the browser extension.');
+        return;
+      }
+      await fetchCompanyData(token);
+    } catch (error) {
+      console.error('Could not disable browser extension:', error);
+      window.alert('Could not reach Krypton. The browser extension was not disabled.');
+    }
+  };
+
+  const handleReauthorizeExtension = async (deviceId: string) => {
+    if (!confirm('Allow this browser extension to register again? The browser user must activate it again.')) return;
+    const token = localStorage.getItem('krypton_token');
+    if (!token) return;
+    try {
+      const response = await fetch('/api/desktop/extension/session', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ deviceId }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        window.alert(result.error || 'Could not re-enable browser registration.');
+        return;
+      }
+      await fetchCompanyData(token);
+    } catch (error) {
+      console.error('Could not re-enable browser extension:', error);
+      window.alert('Could not reach Krypton. Browser registration was not re-enabled.');
+    }
+  };
+
   const handleTogglePolicy = async (field: string, currentVal: boolean) => {
     const token = localStorage.getItem('krypton_token');
     if (!token || !policy) return;
 
     const updated = { ...policy, [field]: !currentVal };
     setPolicy(updated);
+    setPolicySaveError(null);
 
     try {
-      await fetch('/api/company/policy', {
+      const response = await fetch('/api/company/policy', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -240,8 +295,10 @@ export default function CompanyDashboard() {
         },
         body: JSON.stringify({ [field]: !currentVal }),
       });
+      if (!response.ok) throw new Error('Could not save this setting. Please try again.');
     } catch (e) {
-      console.error(e);
+      setPolicy({ ...updated, [field]: currentVal });
+      setPolicySaveError(e instanceof Error ? e.message : 'Could not save this setting. Please try again.');
     }
   };
 
@@ -329,251 +386,262 @@ export default function CompanyDashboard() {
 
   const filteredEvents = events.filter((e) => {
     if (severityFilter && e.riskLevel !== severityFilter) return false;
+    if (actionFilter && e.actionTaken !== actionFilter) return false;
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       return (
-        e.userEmail.toLowerCase().includes(term) ||
-        e.ruleCode.toLowerCase().includes(term) ||
-        e.ruleName.toLowerCase().includes(term) ||
-        e.deviceName.toLowerCase().includes(term)
+        [e.userEmail, e.ruleCode, e.ruleName, e.deviceName, e.userName]
+          .some((value) => String(value || '').toLowerCase().includes(term))
       );
     }
     return true;
   });
+  const filteredEmployees = employees.filter((emp) =>
+    [emp.name, emp.email, emp.role].some((value) => String(value || '').toLowerCase().includes(teamSearch.toLowerCase()))
+  );
+  const filteredDevices = devices.filter((dev) =>
+    [dev.deviceName, dev.user?.name, dev.user?.email, dev.extension?.browser]
+      .some((value) => String(value || '').toLowerCase().includes(deviceSearch.toLowerCase()))
+  );
+  const filteredUsbEvents = usbEvents.filter((event) => {
+    if (usbEventFilter && event.eventType !== usbEventFilter) return false;
+    const term = usbSearch.trim().toLowerCase();
+    return !term || [
+      event.userName, event.userEmail, event.windowsUser, event.deviceName, event.deviceId,
+      event.driveLetter, event.volumeLabel, event.deviceModel, event.deviceSerial,
+      event.fileName, event.extension, event.destinationPath, ...(event.alertReasons || []),
+    ].some((value) => String(value || '').toLowerCase().includes(term));
+  });
+  const trendDays = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date();
+    date.setUTCHours(0, 0, 0, 0);
+    date.setUTCDate(date.getUTCDate() - (6 - index));
+    const day = date.toISOString().slice(0, 10);
+    const entries = (analytics?.eventTrend || []).filter((entry: any) => entry.day === day);
+    return {
+      day,
+      label: date.toLocaleDateString(undefined, { weekday: 'short', timeZone: 'UTC' }),
+      block: entries.filter((entry: any) => entry.action === 'block').reduce((sum: number, entry: any) => sum + entry.count, 0),
+      allow: entries.filter((entry: any) => entry.action === 'allow').reduce((sum: number, entry: any) => sum + entry.count, 0),
+      warn: entries.filter((entry: any) => entry.action === 'warn').reduce((sum: number, entry: any) => sum + entry.count, 0),
+    };
+  });
+  const trendMax = Math.max(1, ...trendDays.map((day) => day.block + day.allow + day.warn));
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
+    <div className="min-h-screen bg-[#070b14] text-slate-100 flex flex-col font-sans">
       {/* Top Header */}
-      <header className="bg-slate-900 border-b border-slate-800 px-6 py-3.5 flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <div className="p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-emerald-400">
-            <ShieldCheck className="w-5 h-5" />
+      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-800/80 bg-[#0b1220]/90 px-4 py-3 backdrop-blur-xl sm:px-6">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-sky-300/20 bg-gradient-to-br from-sky-300/15 to-blue-500/5 text-sky-200 shadow-[0_0_24px_rgba(56,189,248,0.08)]">
+            <ShieldCheck className="h-5 w-5" />
           </div>
-          <div>
-            <div className="flex items-center space-x-2">
-              <span className="font-bold text-sm text-white">{company?.name || 'Company Workspace'}</span>
-              <span className="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded font-mono font-bold uppercase">
-                {company?.plan || 'Business'} Plan
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-400">AI Data Governance & Seat Management Portal</p>
+          <div className="min-w-0">
+            <span className="block truncate text-sm font-semibold tracking-tight text-white">{company?.name || 'Company Workspace'}</span>
+            <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500">
+              <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
+              Security workspace
+            </p>
           </div>
         </div>
 
-        <div className="flex items-center space-x-4">
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
           <Link
             href="/download"
-            className="hidden sm:flex items-center space-x-1.5 text-xs text-slate-300 hover:text-white bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700 transition"
+            className="hidden items-center gap-2 rounded-lg border border-sky-300/20 bg-sky-300/10 px-3 py-2 text-xs font-medium text-sky-100 transition hover:border-sky-200/40 hover:bg-sky-300/15 sm:flex"
           >
-            <Download className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Windows Installer</span>
+            <Download className="h-3.5 w-3.5 text-sky-300" />
+            <span>Download app</span>
           </Link>
-          <div className="text-right text-xs">
-            <div className="font-semibold text-slate-200">{company?.contactEmail}</div>
-            <div className="text-slate-500 text-[10px]">Company Administrator</div>
+          <div className="hidden h-8 w-px bg-slate-800 sm:block" />
+          <div className="hidden max-w-48 text-right text-xs lg:block">
+            <div className="truncate font-medium text-slate-200">{company?.contactEmail}</div>
+            <div className="mt-0.5 text-[10px] text-slate-500">Workspace admin</div>
           </div>
           <button
             onClick={handleLogout}
-            title="Sign Out"
-            className="p-2 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-lg transition"
+            title="Sign out"
+            aria-label="Sign out"
+            className="flex items-center gap-2 rounded-lg border border-slate-800 px-2.5 py-2 text-xs text-slate-400 transition hover:border-rose-400/20 hover:bg-rose-400/5 hover:text-rose-300"
           >
-            <LogOut className="w-4 h-4" />
+            <LogOut className="h-4 w-4" />
+            <span className="hidden sm:inline">Sign out</span>
           </button>
         </div>
       </header>
 
       {/* Main Layout */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar */}
-        <aside className="w-60 bg-slate-900/60 border-r border-slate-800 p-4 space-y-1">
-          <button
-            onClick={() => setActiveTab('overview')}
-            className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition ${
-              activeTab === 'overview'
-                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-            }`}
-          >
-            <Shield className="w-4 h-4" />
-            <span>Workspace Overview</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('employees')}
-            className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition ${
-              activeTab === 'employees'
-                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-            }`}
-          >
-            <Users className="w-4 h-4" />
-            <span>Employees & Seats ({employees.length})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('devices')}
-            className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition ${
-              activeTab === 'devices'
-                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-            }`}
-          >
-            <Laptop className="w-4 h-4" />
-            <span>Registered Devices ({devices.length})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('policy')}
-            className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition ${
-              activeTab === 'policy'
-                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-            }`}
-          >
-            <Sliders className="w-4 h-4" />
-            <span>Security Policies</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('incidents')}
-            className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition ${
-              activeTab === 'incidents'
-                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-            }`}
-          >
-            <AlertTriangle className="w-4 h-4" />
-            <span>Security Incidents ({events.length})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('audit')}
-            className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition ${
-              activeTab === 'audit'
-                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-            }`}
-          >
-            <FileText className="w-4 h-4" />
-            <span>Audit Trail</span>
-          </button>
+      <div className="flex-1 flex flex-col md:flex-row">
+        <aside className="shrink-0 border-b border-slate-800/80 bg-[#0b1220] md:w-60 md:border-b-0 md:border-r">
+          <div className="hidden px-5 pb-3 pt-6 md:block">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600">Workspace</span>
+          </div>
+          <nav aria-label="Company dashboard" className="flex gap-1 overflow-x-auto p-2 sm:px-4 md:block md:space-y-1 md:px-3 md:pb-5 md:pt-1">
+            {([
+              { id: 'overview', label: 'Overview', icon: Shield },
+              { id: 'employees', label: 'Team', icon: Users },
+              { id: 'devices', label: 'Devices', icon: Laptop },
+              { id: 'incidents', label: 'Activity', icon: AlertTriangle },
+              { id: 'usb', label: 'USB activity', icon: HardDrive },
+            ] as const).map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                onClick={() => setActiveTab(id)}
+                aria-current={activeTab === id ? 'page' : undefined}
+                className={`group relative flex shrink-0 items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-medium transition md:w-full ${
+                  activeTab === id
+                    ? 'bg-sky-300/10 text-sky-100 ring-1 ring-inset ring-sky-300/15'
+                    : 'text-slate-400 hover:bg-slate-800/70 hover:text-slate-100'
+                }`}
+              >
+                {activeTab === id && <span className="absolute bottom-2 left-0 top-2 w-0.5 rounded-full bg-sky-300 md:hidden" />}
+                <Icon className={`h-4 w-4 shrink-0 ${activeTab === id ? 'text-sky-300' : 'text-slate-500 group-hover:text-slate-300'}`} />
+                <span>{label}</span>
+              </button>
+            ))}
+          </nav>
         </aside>
 
         {/* Content Area */}
-        <main className="flex-1 overflow-y-auto p-8 bg-slate-950">
+        <main className="min-w-0 flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-[#070b14]">
           {/* TAB 1: OVERVIEW */}
           {activeTab === 'overview' && (
-            <div className="max-w-6xl space-y-8">
+            <div className="mx-auto max-w-6xl space-y-6 sm:space-y-8">
               <div>
-                <h1 className="text-xl font-bold text-white">Company Workspace Status</h1>
-                <p className="text-xs text-slate-400 mt-1">
-                  Tenant-isolated overview of seat allocations, endpoint protections, and blocked prompt secrets.
-                </p>
+                <h1 className="text-2xl font-semibold tracking-tight text-white">Overview</h1>
+                <p className="mt-1 text-sm text-slate-400">A quick look at your team’s protection and license usage.</p>
               </div>
 
-              {/* Seat Metric Highlight */}
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
+              <div className="rounded-2xl border border-slate-800/80 bg-[#0b1220] p-5 sm:p-6 space-y-5">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                   <div>
-                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                      Seat Allocation Utilization
-                    </span>
-                    <div className="text-3xl font-extrabold text-white mt-1">
+                    <span className="text-sm font-medium text-slate-300">Team seats</span>
+                    <div className="mt-1 text-3xl font-semibold tracking-tight text-white">
                       {license?.occupiedSeats || 0}{' '}
-                      <span className="text-base font-normal text-slate-400">
-                        / {license?.seatLimit || 0} seats occupied
+                      <span className="text-base font-normal text-slate-500">
+                        of {license?.seatLimit || 0}
                       </span>
                     </div>
                   </div>
 
-                  <div className="flex items-center space-x-3">
-                    <div className="text-right">
-                      <div className="text-xs text-slate-400">Company License Key</div>
-                      <div className="font-mono text-emerald-400 font-bold text-xs bg-slate-950 px-3 py-1.5 rounded border border-slate-800">
-                        {license?.licenseKey || 'N/A'}
-                      </div>
-                    </div>
+                  <div className="text-left sm:text-right">
+                    <div className="text-xs text-slate-500">Available</div>
+                    <div className="mt-1 text-lg font-semibold text-sky-300">{license?.availableSeats || 0}</div>
                   </div>
                 </div>
 
-                {/* Progress bar */}
-                <div className="w-full bg-slate-800 rounded-full h-3 overflow-hidden">
+                <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800">
                   <div
-                    className="bg-emerald-500 h-3 rounded-full transition-all duration-500"
+                    className="h-full rounded-full bg-sky-400 transition-all duration-500"
                     style={{
                       width: `${Math.min(100, ((license?.occupiedSeats || 0) / (license?.seatLimit || 1)) * 100)}%`,
                     }}
                   />
                 </div>
 
-                <div className="flex justify-between text-xs text-slate-400 pt-1">
-                  <span>Available Seats: {license?.availableSeats || 0}</span>
-                  <span>Grace Period: {license?.offlineGraceHours || 72}h</span>
-                  <span>Status: {license?.status || 'Active'}</span>
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+                  <span>
+                    License <span className="ml-1 font-medium capitalize text-slate-300">{license?.status || 'active'}</span>
+                  </span>
+                  {license?.expiresAt && (
+                    <span>Renews / expires {new Date(license.expiresAt).toLocaleDateString()}</span>
+                  )}
                 </div>
               </div>
 
-              {/* Cards Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-1">
-                  <div className="text-xs text-slate-400">Active Workstation Devices</div>
-                  <div className="text-2xl font-extrabold text-white">{devices.length}</div>
-                  <div className="text-[11px] text-emerald-400">Enforcing local secret inspection</div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="rounded-xl border border-slate-800/80 bg-[#0b1220] p-5">
+                  <div className="text-sm text-slate-400">Active devices</div>
+                  <div className="mt-2 text-2xl font-semibold text-white">
+                    {devices.filter((device) => device.status === 'active').length}
+                  </div>
                 </div>
 
-                <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-1">
-                  <div className="text-xs text-slate-400">Blocked Prompts</div>
-                  <div className="text-2xl font-extrabold text-white">{analytics?.actionCounts?.block || 0}</div>
-                  <div className="text-[11px] text-red-400">Credentials prevented from leak</div>
+                <div className="rounded-xl border border-slate-800/80 bg-[#0b1220] p-5">
+                  <div className="text-sm text-slate-400">Blocked submissions</div>
+                  <div className="mt-2 text-2xl font-semibold text-white">{analytics?.actionCounts?.block || 0}</div>
                 </div>
 
-                <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-1">
-                  <div className="text-xs text-slate-400">Warnings Confirmed</div>
-                  <div className="text-2xl font-extrabold text-white">{analytics?.actionCounts?.warn || 0}</div>
-                  <div className="text-[11px] text-amber-400">Employee confirmation workflows</div>
+                <div className="rounded-xl border border-slate-800/80 bg-[#0b1220] p-5">
+                  <div className="text-sm text-slate-400">Allowed submissions</div>
+                  <div className="mt-2 text-2xl font-semibold text-white">{analytics?.actionCounts?.allow || 0}</div>
                 </div>
               </div>
 
-              {/* Recent Security Incidents */}
-              <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
+              <section className="rounded-2xl border border-slate-800/80 bg-[#0b1220] p-5 sm:p-6">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-base font-semibold text-white">Submission activity</h2>
+                    <p className="mt-1 text-xs text-slate-500">Recorded events over the last 7 days</p>
+                  </div>
+                  <div className="flex gap-4 text-[11px] text-slate-400">
+                    <span><i className="mr-1.5 inline-block h-2 w-2 rounded-full bg-sky-400" />Allowed</span>
+                    <span><i className="mr-1.5 inline-block h-2 w-2 rounded-full bg-amber-400" />Warned</span>
+                    <span><i className="mr-1.5 inline-block h-2 w-2 rounded-full bg-rose-400" />Blocked</span>
+                  </div>
+                </div>
+                <div className="mt-6 grid h-36 grid-cols-7 items-end gap-3">
+                  {trendDays.map((day) => {
+                    const total = day.allow + day.warn + day.block;
+                    const height = total ? Math.max(5, (total / trendMax) * 100) : 2;
+                    return (
+                      <div key={day.day} className="flex h-full flex-col items-center justify-end gap-2">
+                        <span className="text-[10px] tabular-nums text-slate-500">{total || ''}</span>
+                        <div className="flex w-full max-w-12 flex-col justify-end overflow-hidden rounded-t-md bg-slate-800/60" style={{ height: `${height}%` }} title={`${total} events`}>
+                          <div className="bg-rose-400" style={{ height: `${total ? (day.block / total) * 100 : 0}%` }} />
+                          <div className="bg-amber-400" style={{ height: `${total ? (day.warn / total) * 100 : 0}%` }} />
+                          <div className="bg-sky-400" style={{ height: `${total ? (day.allow / total) * 100 : 0}%` }} />
+                        </div>
+                        <span className="text-[10px] text-slate-500">{day.label}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <div className="rounded-2xl border border-slate-800/80 bg-[#0b1220] p-5 sm:p-6 space-y-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-bold text-white">Recent Security Incidents</h3>
+                  <h2 className="text-base font-semibold text-white">Recent activity</h2>
                   <button
                     onClick={() => setActiveTab('incidents')}
-                    className="text-xs text-emerald-400 hover:underline font-semibold"
+                    className="text-xs font-medium text-sky-300 hover:text-sky-200"
                   >
-                    View All Incidents &rarr;
+                    View all
                   </button>
                 </div>
 
                 {events.length === 0 ? (
-                  <div className="text-center py-6 text-xs text-slate-500">
-                    No security incidents recorded yet. Prompts scanned by your team will appear here in real-time.
+                  <div className="py-8 text-center text-sm text-slate-500">
+                    No activity yet. Events will appear here when an active device reports them.
                   </div>
                 ) : (
-                  <div className="space-y-2.5">
+                  <div className="divide-y divide-slate-800/70">
                     {events.slice(0, 4).map((evt) => (
                       <div
                         key={evt.id}
-                        className="bg-slate-950 border border-slate-800/80 rounded-lg p-3 flex items-center justify-between text-xs"
+                        className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm"
                       >
-                        <div className="space-y-1 max-w-xl">
-                          <div className="flex items-center space-x-2">
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
                             <span
-                              className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                                evt.actionTaken === 'block' ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/20 text-amber-400'
+                              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                                evt.actionTaken === 'block'
+                                  ? 'bg-red-400/10 text-red-300'
+                                  : evt.actionTaken === 'allow'
+                                    ? 'bg-emerald-400/10 text-emerald-300'
+                                    : 'bg-amber-400/10 text-amber-300'
                               }`}
                             >
                               {evt.actionTaken}
                             </span>
-                            <span className="font-mono text-emerald-400 font-bold">{evt.ruleCode}</span>
-                            <span className="text-slate-300 font-semibold">{evt.userName}</span>
+                            <span className="truncate font-medium text-slate-200">{evt.userName}</span>
+                            <span className="text-slate-500">{evt.targetApp}</span>
                           </div>
-                          <div className="font-mono text-[11px] text-slate-400 truncate">
-                            {evt.redactedPreview}
+                          <div className="truncate text-xs text-slate-500">
+                            {evt.ruleName}{evt.redactedPreview?.startsWith('[Prompt withheld') ? '' : ` · ${evt.redactedPreview}`}
                           </div>
                         </div>
-                        <span className="text-slate-500 text-[11px]">{new Date(evt.timestamp).toLocaleTimeString()}</span>
+                        <span className="shrink-0 text-xs text-slate-500">{new Date(evt.timestamp).toLocaleString()}</span>
                       </div>
                     ))}
                   </div>
@@ -584,25 +652,29 @@ export default function CompanyDashboard() {
 
           {/* TAB 2: EMPLOYEES */}
           {activeTab === 'employees' && (
-            <div className="max-w-6xl space-y-6">
+            <div className="mx-auto max-w-6xl space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h1 className="text-xl font-bold text-white">Employees & Seat Assignments</h1>
-                  <p className="text-xs text-slate-400 mt-1">
-                    Manage team access. Deactivating an employee releases their seat atomically back to your company pool.
+                  <h1 className="text-2xl font-semibold tracking-tight text-white">Team</h1>
+                  <p className="mt-1 text-sm text-slate-400">
+                    Manage employee access and assigned seats.
                   </p>
                 </div>
                 <button
                   onClick={() => setShowInviteModal(true)}
-                  className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold px-3.5 py-2 rounded-lg text-xs flex items-center space-x-1.5 transition shadow"
+                  className="flex items-center gap-2 rounded-lg bg-sky-400 px-3.5 py-2.5 text-xs font-semibold text-slate-950 transition hover:bg-sky-300"
                 >
                   <Plus className="w-4 h-4" />
-                  <span>Invite Employee</span>
+                  <span>Invite</span>
                 </button>
               </div>
 
               {/* Employees Table */}
-              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+              <div className="relative max-w-md">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                <input value={teamSearch} onChange={(e) => setTeamSearch(e.target.value)} placeholder="Search name, email, or role" className="w-full rounded-xl border border-slate-800 bg-[#0b1220] py-2.5 pl-9 pr-3 text-sm text-white placeholder:text-slate-500 focus:border-sky-400 focus:outline-none" />
+              </div>
+              <div className="overflow-x-auto rounded-2xl border border-slate-800/80 bg-[#0b1220]">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-950/80 border-b border-slate-800 text-slate-400 font-semibold">
                     <tr>
@@ -615,7 +687,15 @@ export default function CompanyDashboard() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60">
-                    {employees.map((emp) => (
+                    {employees.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="p-10 text-center text-sm text-slate-500">
+                          No team members yet. Invite someone to get started.
+                        </td>
+                      </tr>
+                    ) : filteredEmployees.length === 0 ? (
+                      <tr><td colSpan={6} className="p-10 text-center text-sm text-slate-500">No team members match this search.</td></tr>
+                    ) : filteredEmployees.map((emp) => (
                       <tr key={emp.membershipId} className="text-slate-300 hover:bg-slate-800/30">
                         <td className="p-4">
                           <div className="font-bold text-white">{emp.name}</div>
@@ -659,8 +739,8 @@ export default function CompanyDashboard() {
 
               {/* Pending Invitations Table */}
               {pendingInvitations.length > 0 && (
-                <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3">
-                  <h3 className="text-xs font-bold text-slate-300">Pending Email Invitations</h3>
+                <div className="rounded-2xl border border-slate-800/80 bg-[#0b1220] p-5 space-y-3">
+                  <h2 className="text-sm font-semibold text-white">Pending invitations</h2>
                   <div className="divide-y divide-slate-800 text-xs">
                     {pendingInvitations.map((inv) => (
                       <div key={inv.id} className="py-2.5 flex items-center justify-between text-slate-400">
@@ -678,38 +758,46 @@ export default function CompanyDashboard() {
 
           {/* TAB 3: DEVICES */}
           {activeTab === 'devices' && (
-            <div className="max-w-6xl space-y-6">
+            <div className="mx-auto max-w-6xl space-y-6">
               <div>
-                <h1 className="text-xl font-bold text-white">Registered Workstation Devices</h1>
-                <p className="text-xs text-slate-400 mt-1">
-                  Krypton desktop devices and their browser-extension protection status. Revoking a device disables its linked extension sessions.
+                <h1 className="text-2xl font-semibold tracking-tight text-white">Devices</h1>
+                <p className="mt-1 text-sm text-slate-400">
+                  See connected devices and manage access.
                 </p>
               </div>
 
-              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+              <div className="relative max-w-md">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                <input value={deviceSearch} onChange={(e) => setDeviceSearch(e.target.value)} placeholder="Search device, user, or browser" className="w-full rounded-xl border border-slate-800 bg-[#0b1220] py-2.5 pl-9 pr-3 text-sm text-white placeholder:text-slate-500 focus:border-sky-400 focus:outline-none" />
+              </div>
+              <div className="overflow-x-auto rounded-2xl border border-slate-800/80 bg-[#0b1220]">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-950/80 border-b border-slate-800 text-slate-400 font-semibold">
                     <tr>
                       <th className="p-4">Device Name</th>
                       <th className="p-4">Assigned User</th>
-                      <th className="p-4">Hardware ID</th>
-                      <th className="p-4">Platform</th>
                       <th className="p-4">Browser Extension</th>
-                      <th className="p-4">Last Heartbeat</th>
+                      <th className="p-4">Last active</th>
                       <th className="p-4">Status</th>
                       <th className="p-4 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60">
-                    {devices.map((dev) => (
+                    {devices.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="p-10 text-center text-sm text-slate-500">
+                          No devices have connected yet.
+                        </td>
+                      </tr>
+                    ) : filteredDevices.length === 0 ? (
+                      <tr><td colSpan={6} className="p-10 text-center text-sm text-slate-500">No devices match this search.</td></tr>
+                    ) : filteredDevices.map((dev) => (
                       <tr key={dev.id} className="text-slate-300 hover:bg-slate-800/30">
                         <td className="p-4 font-bold text-white flex items-center space-x-2">
                           <Laptop className="w-4 h-4 text-emerald-400 shrink-0" />
                           <span>{dev.deviceName}</span>
                         </td>
                         <td className="p-4 text-slate-300">{dev.user?.name || dev.user?.email || 'N/A'}</td>
-                        <td className="p-4 font-mono text-[11px] text-slate-500">{dev.deviceId}</td>
-                        <td className="p-4 text-slate-400 text-[11px]">{dev.platform || dev.osVersion}</td>
                         <td className="p-4 text-[11px]">
                           <span className={dev.extension?.protectionActive ? 'text-emerald-300' : 'text-slate-500'}>
                             {dev.extension?.status || 'Not Installed'}
@@ -721,7 +809,7 @@ export default function CompanyDashboard() {
                           )}
                         </td>
                         <td className="p-4 text-slate-500 font-mono text-[11px]">
-                          {new Date(dev.lastHeartbeatAt).toLocaleString()}
+                          {dev.lastHeartbeatAt ? new Date(dev.lastHeartbeatAt).toLocaleString() : '—'}
                         </td>
                         <td className="p-4">
                           <span
@@ -733,6 +821,22 @@ export default function CompanyDashboard() {
                           </span>
                         </td>
                         <td className="p-4 text-right">
+                          {dev.extension?.adminRevoked && (
+                            <button
+                              onClick={() => handleReauthorizeExtension(dev.deviceId)}
+                              className="mr-2 rounded border border-emerald-700/60 bg-emerald-950/30 px-2.5 py-1 text-[11px] text-emerald-200 transition hover:bg-emerald-900/50"
+                            >
+                              Allow registration
+                            </button>
+                          )}
+                          {dev.extension?.installed && !dev.extension?.adminRevoked && (
+                            <button
+                              onClick={() => handleRevokeExtension(dev.deviceId)}
+                              className="mr-2 rounded border border-amber-700/60 bg-amber-950/30 px-2.5 py-1 text-[11px] text-amber-200 transition hover:bg-amber-900/50"
+                            >
+                              Disable extension
+                            </button>
+                          )}
                           {dev.status === 'active' && (
                             <button
                               onClick={() => handleRevokeDevice(dev.id)}
@@ -751,7 +855,7 @@ export default function CompanyDashboard() {
           )}
 
           {/* TAB 4: POLICY */}
-          {activeTab === 'policy' && (
+          {false && (
             <div className="max-w-4xl space-y-6">
               <div>
                 <h1 className="text-xl font-bold text-white">Workstation Protection Policies</h1>
@@ -805,6 +909,30 @@ export default function CompanyDashboard() {
                       }`}
                     >
                       {policy?.warnMediumRisk ? 'Active (Warn)' : 'Disabled'}
+                    </button>
+                  </div>
+
+                  <div className="py-3 flex items-center justify-between gap-4">
+                    <div>
+                      <div className="font-semibold text-slate-200">Log redacted AI prompt previews</div>
+                      <div className="max-w-2xl text-slate-500">
+                        When enabled, the dashboard records allowed and blocked submission attempts. Built-in and
+                        company-defined patterns are redacted locally and checked again by the server. Other prompt
+                        text may still contain confidential information. Off by default.
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleTogglePolicy(
+                        'redactedPromptLoggingEnabled',
+                        policy?.redactedPromptLoggingEnabled === true,
+                      )}
+                      className={`shrink-0 rounded px-3 py-1.5 text-[10px] font-bold uppercase transition ${
+                        policy?.redactedPromptLoggingEnabled
+                          ? 'bg-emerald-500 text-slate-950'
+                          : 'bg-slate-800 text-slate-400'
+                      }`}
+                    >
+                      {policy?.redactedPromptLoggingEnabled ? 'Enabled' : 'Disabled'}
                     </button>
                   </div>
                 </div>
@@ -897,26 +1025,54 @@ export default function CompanyDashboard() {
 
           {/* TAB 5: INCIDENTS */}
           {activeTab === 'incidents' && (
-            <div className="max-w-6xl space-y-6">
+            <div className="mx-auto max-w-6xl space-y-6">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
-                  <h1 className="text-xl font-bold text-white">Security Incident Audit</h1>
-                  <p className="text-xs text-slate-400 mt-1">
-                    Redacted log of prompt interception events reported by Windows endpoints.
+                  <h1 className="text-2xl font-semibold tracking-tight text-white">Activity</h1>
+                  <p className="mt-1 text-sm text-slate-400">
+                    Prompt submission attempts reported by connected browsers and devices.
                   </p>
                 </div>
                 <button
                   onClick={handleExportCSV}
                   disabled={events.length === 0}
-                  className="bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white font-semibold px-3.5 py-2 rounded-lg text-xs flex items-center space-x-1.5 border border-slate-700 transition"
+                  className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/70 px-3.5 py-2.5 text-xs font-medium text-slate-200 transition hover:bg-slate-800 disabled:opacity-50"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>Export to CSV</span>
+                  <span>Export</span>
                 </button>
               </div>
 
+              <div className="flex flex-col justify-between gap-3 rounded-xl border border-slate-800/80 bg-[#0b1220] p-4 sm:flex-row sm:items-center">
+                <div>
+                  <div className="text-sm font-medium text-slate-200">Redacted prompt previews</div>
+                  <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-500">
+                    Optional. When enabled, allowed and blocked attempts are logged with known sensitive values redacted.
+                    Unrecognized confidential text may remain. Off by default.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  aria-pressed={policy?.redactedPromptLoggingEnabled === true}
+                  onClick={() => handleTogglePolicy(
+                    'redactedPromptLoggingEnabled',
+                    policy?.redactedPromptLoggingEnabled === true,
+                  )}
+                  className={`shrink-0 rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                    policy?.redactedPromptLoggingEnabled
+                      ? 'bg-sky-300 text-slate-950 hover:bg-sky-200'
+                      : 'border border-slate-700 text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  {policy?.redactedPromptLoggingEnabled ? 'Enabled' : 'Enable previews'}
+                </button>
+              </div>
+              {policySaveError && (
+                <p role="alert" className="text-sm text-red-300">{policySaveError}</p>
+              )}
+
               {/* Filters */}
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-800/80 bg-[#0b1220] p-3">
                 <div className="relative flex-1 min-w-[200px]">
                   <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-500" />
                   <input
@@ -924,14 +1080,14 @@ export default function CompanyDashboard() {
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     placeholder="Search by employee, rule code, device..."
-                    className="w-full bg-slate-900 border border-slate-800 rounded-lg pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-950/70 py-2 pl-9 pr-3 text-sm text-white placeholder-slate-500 focus:border-sky-400 focus:outline-none"
                   />
                 </div>
 
                 <select
                   value={severityFilter}
                   onChange={(e) => setSeverityFilter(e.target.value)}
-                  className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                  className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
                 >
                   <option value="">All Risk Levels</option>
                   <option value="CRITICAL">Critical</option>
@@ -939,10 +1095,21 @@ export default function CompanyDashboard() {
                   <option value="MEDIUM">Medium</option>
                   <option value="LOW">Low</option>
                 </select>
+                <select
+                  value={actionFilter}
+                  onChange={(e) => setActionFilter(e.target.value)}
+                  aria-label="Filter by action"
+                  className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                >
+                  <option value="">All actions</option>
+                  <option value="allow">Allowed</option>
+                  <option value="warn">Warned</option>
+                  <option value="block">Blocked</option>
+                </select>
               </div>
 
               {/* Incidents Table */}
-              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+              <div className="overflow-x-auto rounded-2xl border border-slate-800/80 bg-[#0b1220]">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-950/80 border-b border-slate-800 text-slate-400 font-semibold">
                     <tr>
@@ -950,13 +1117,19 @@ export default function CompanyDashboard() {
                       <th className="p-4">Employee</th>
                       <th className="p-4">Workflow / Target</th>
                       <th className="p-4">Risk Level</th>
-                      <th className="p-4">Rule Code</th>
+                      <th className="p-4">Detection</th>
                       <th className="p-4">Action</th>
                       <th className="p-4">Redacted Preview</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60">
-                    {filteredEvents.map((evt) => (
+                    {filteredEvents.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="p-10 text-center text-sm text-slate-500">
+                          No activity matches these filters.
+                        </td>
+                      </tr>
+                    ) : filteredEvents.map((evt) => (
                       <tr key={evt.id} className="text-slate-300 hover:bg-slate-800/30">
                         <td className="p-4 text-slate-500 font-mono text-[11px] whitespace-nowrap">
                           {new Date(evt.timestamp).toLocaleString()}
@@ -980,9 +1153,28 @@ export default function CompanyDashboard() {
                           </span>
                         </td>
                         <td className="p-4 font-mono text-emerald-400 font-bold">{evt.ruleCode}</td>
-                        <td className="p-4 font-bold uppercase text-[10px] text-red-400">{evt.actionTaken}</td>
-                        <td className="p-4 font-mono text-[11px] text-slate-300 max-w-xs truncate">
-                          {evt.redactedPreview}
+                        <td
+                          className={`p-4 font-bold uppercase text-[10px] ${
+                            evt.actionTaken === 'block'
+                              ? 'text-red-400'
+                              : evt.actionTaken === 'allow'
+                                ? 'text-emerald-400'
+                                : 'text-amber-400'
+                          }`}
+                        >
+                          {evt.actionTaken}
+                        </td>
+                        <td className="p-4 font-mono text-[11px] text-slate-300 max-w-md">
+                          <details>
+                            <summary className="cursor-pointer truncate text-sky-300">
+                              {evt.redactedPreview === '[Prompt withheld; sensitive content blocked locally]'
+                                ? 'Prompt withheld'
+                                : 'View redacted prompt'}
+                            </summary>
+                            <pre className="mt-2 max-h-48 max-w-md overflow-auto whitespace-pre-wrap break-words rounded bg-slate-950 p-3 text-slate-300">
+                              {evt.redactedPreview}
+                            </pre>
+                          </details>
                         </td>
                       </tr>
                     ))}
@@ -992,106 +1184,213 @@ export default function CompanyDashboard() {
             </div>
           )}
 
-          {/* TAB 6: AUDIT TRAIL */}
-          {activeTab === 'audit' && (
-            <div className="max-w-6xl space-y-6">
+          {activeTab === 'usb' && (
+            <div className="mx-auto max-w-6xl space-y-6">
               <div>
-                <h1 className="text-xl font-bold text-white">Company Administrative Audit Trail</h1>
-                <p className="text-xs text-slate-400 mt-1">
-                  Log of administrator actions, invitations, device revocations, and policy modifications.
+                <h1 className="text-2xl font-semibold tracking-tight text-white">USB activity</h1>
+                <p className="mt-1 text-sm text-slate-400">
+                  Removable-drive connections and destination-file changes reported by employees who enabled monitoring.
                 </p>
               </div>
 
-              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-950/80 border-b border-slate-800 text-slate-400 font-semibold">
+              <div className="rounded-xl border border-amber-400/15 bg-amber-400/[0.04] p-4 text-xs leading-5 text-amber-100/80">
+                Krypton records metadata only; it never reads or uploads file contents. A file-write event means a change was observed on the USB destination.
+                Standard Windows user-mode notifications do not reliably provide the source path or confirm that a copy completed.
+              </div>
+
+              <section className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="text-sm font-semibold text-slate-200">Device monitoring consent</h2>
+                  <span className="text-[11px] text-slate-500">{usbMonitoredDevices.length} registered device(s)</span>
+                </div>
+                <p className="text-[11px] text-slate-500">Consent is recorded by the server; it does not prove that the local watcher is currently running. Activity rows represent events successfully received by Krypton.</p>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {usbMonitoredDevices.map((device) => (
+                    <div key={device.deviceId} className="flex items-center justify-between gap-4 rounded-xl border border-slate-800/80 bg-[#0b1220] p-4">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium text-white">{device.userName}</div>
+                        <div className="mt-0.5 truncate text-xs text-slate-500">{device.userEmail || device.deviceName}</div>
+                      </div>
+                      <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold ${
+                        device.consentAt && device.deviceStatus === 'active'
+                          ? 'bg-emerald-500/10 text-emerald-300'
+                          : 'bg-slate-800 text-slate-400'
+                      }`}>
+                        {device.consentAt && device.deviceStatus === 'active' ? 'Consent recorded' : 'Off'}
+                      </span>
+                    </div>
+                  ))}
+                  {usbMonitoredDevices.length === 0 && (
+                    <div className="rounded-xl border border-slate-800 bg-[#0b1220] p-5 text-sm text-slate-500">
+                      No desktop devices are registered for this company.
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <div className="flex flex-col gap-3 rounded-xl border border-slate-800/80 bg-[#0b1220] p-3 sm:flex-row sm:items-center">
+                <div className="relative min-w-[220px] flex-1">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
+                  <input
+                    value={usbSearch}
+                    onChange={(event) => setUsbSearch(event.target.value)}
+                    aria-label="Search USB activity"
+                    placeholder="Search employee, device, file, or destination…"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-950/70 py-2 pl-9 pr-3 text-sm text-white placeholder-slate-500 focus:border-sky-400 focus:outline-none"
+                  />
+                </div>
+                <select
+                  value={usbEventFilter}
+                  onChange={(event) => setUsbEventFilter(event.target.value)}
+                  aria-label="Filter USB activity type"
+                  className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                >
+                  <option value="">All USB events</option>
+                  <option value="device_connected">Connected</option>
+                  <option value="device_disconnected">Disconnected</option>
+                  <option value="file_write_observed">File changes</option>
+                </select>
+                <span className="text-xs text-slate-500">{filteredUsbEvents.length} event(s)</span>
+              </div>
+
+              <div className="overflow-x-auto rounded-2xl border border-slate-800/80 bg-[#0b1220]">
+                <table className="w-full min-w-[1100px] text-left text-xs">
+                  <thead className="border-b border-slate-800 bg-slate-950/80 font-semibold text-slate-400">
                     <tr>
-                      <th className="p-4">Timestamp</th>
-                      <th className="p-4">Action</th>
-                      <th className="p-4">Actor</th>
-                      <th className="p-4">Entity</th>
+                      <th className="p-4">Time</th>
+                      <th className="p-4">Employee / device</th>
+                      <th className="p-4">USB device</th>
+                      <th className="p-4">Activity / file</th>
+                      <th className="p-4">Source / destination</th>
+                      <th className="p-4">Transfer status</th>
+                      <th className="p-4">Alert</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60">
-                    {auditLogs.map((log) => (
-                      <tr key={log._id} className="text-slate-300">
-                        <td className="p-4 text-slate-500 font-mono text-[11px]">
-                          {new Date(log.timestamp).toLocaleString()}
+                    {filteredUsbEvents.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="p-10 text-center text-sm text-slate-500">
+                          No USB activity matches these filters.
                         </td>
-                        <td className="p-4 font-mono font-bold text-emerald-400">{log.action}</td>
-                        <td className="p-4 text-white">{log.actorEmail}</td>
-                        <td className="p-4 text-slate-400">{log.entityType}</td>
+                      </tr>
+                    ) : filteredUsbEvents.map((event) => (
+                      <tr key={event.id} className="align-top text-slate-300 hover:bg-slate-800/30">
+                        <td className="whitespace-nowrap p-4 text-[11px] text-slate-500">{new Date(event.timestamp).toLocaleString()}</td>
+                        <td className="p-4">
+                          <div className="font-medium text-white">{event.userName}</div>
+                          <div className="mt-0.5 text-[11px] text-slate-500">{event.userEmail}</div>
+                          <div className="mt-1 text-[10px] text-slate-600">{event.deviceName} · Windows user {event.windowsUser || 'unknown'}</div>
+                        </td>
+                        <td className="p-4">
+                          <div className="font-medium text-slate-200">{event.driveLetter} {event.volumeLabel || 'Removable drive'}</div>
+                          <div className="mt-1 text-[11px] text-slate-500">{event.deviceModel || 'Device model unavailable'}</div>
+                          {event.deviceSerial && <div className="mt-0.5 font-mono text-[10px] text-slate-600">S/N {event.deviceSerial}</div>}
+                        </td>
+                        <td className="p-4">
+                          <div className="font-medium text-slate-200">
+                            {event.eventType === 'device_connected' ? 'Device connected' :
+                              event.eventType === 'device_disconnected' ? 'Device disconnected' : event.fileName}
+                          </div>
+                          {event.fileName && (
+                            <>
+                              <div className="mt-1 text-[11px] text-slate-500">{event.extension || 'No extension'} · {event.sizeBytes === null ? 'Size unavailable' : `${(event.sizeBytes / (1024 * 1024)).toFixed(2)} MB`}</div>
+                            </>
+                          )}
+                        </td>
+                        <td className="max-w-[260px] p-4">
+                          <div className="text-[11px] text-slate-500">Source: unavailable</div>
+                          <div className="mt-1 break-all font-mono text-[10px] text-slate-400">{event.destinationPath || '—'}</div>
+                        </td>
+                        <td className="p-4 text-slate-400">
+                          {event.transferStatus === 'destination_write_observed' ? 'Destination write observed · completion unverified' :
+                            event.transferStatus === 'connected' ? 'Connected' : 'Disconnected'}
+                        </td>
+                        <td className="p-4">
+                          {event.suspicious
+                            ? <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-1 text-[10px] font-semibold text-amber-200"><AlertTriangle className="h-3 w-3" />{event.alertReasons?.join(', ') || 'Review'}</span>
+                            : <span className="text-slate-600">—</span>}
+                          <div className={`mt-2 text-[10px] ${event.integrityStatus === 'verified' ? 'text-emerald-400' : 'text-rose-300'}`}>
+                            {event.integrityStatus === 'verified' ? 'Integrity verified' : `Integrity ${event.integrityStatus || 'unavailable'}`}
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+              <p className="text-[11px] text-slate-600">Showing the latest 100 events. Logs are append-only in the application and protected by a server-side HMAC hash chain.</p>
             </div>
           )}
+
         </main>
       </div>
 
       {/* Invite Modal */}
       {showInviteModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 text-xs">
+          <div className="w-full max-w-md space-y-4 rounded-2xl border border-slate-800 bg-[#0b1220] p-6 text-sm shadow-2xl">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h3 className="text-sm font-bold text-white">Invite Employee to Workspace</h3>
+              <h2 className="text-base font-semibold text-white">Invite a teammate</h2>
               <button
                 onClick={() => setShowInviteModal(false)}
-                className="text-slate-400 hover:text-white font-bold"
+                aria-label="Close invite dialog"
+                className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white"
               >
-                ✕
+                <XCircle className="h-4 w-4" />
               </button>
             </div>
 
             {inviteMessage && (
-              <div className="p-3 bg-emerald-950/40 border border-emerald-800/60 rounded-lg text-emerald-300">
+              <div className={`rounded-lg border p-3 ${
+                inviteMessage.startsWith('Error:')
+                  ? 'border-red-900/70 bg-red-950/30 text-red-200'
+                  : 'border-emerald-900/70 bg-emerald-950/30 text-emerald-200'
+              }`}>
                 {inviteMessage}
               </div>
             )}
 
             <form onSubmit={handleInviteEmployee} className="space-y-4">
               <div>
-                <label className="block font-semibold text-slate-300 mb-1">Employee Full Name</label>
+                <label className="mb-1 block text-xs font-medium text-slate-300">Full name</label>
                 <input
                   type="text"
                   required
                   placeholder="Rahul Sharma"
                   value={inviteName}
                   onChange={(e) => setInviteName(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-emerald-500"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 p-3 text-sm text-white focus:border-sky-400 focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-300 mb-1">Employee Work Email</label>
+                <label className="mb-1 block text-xs font-medium text-slate-300">Work email</label>
                 <input
                   type="email"
                   required
                   placeholder="rahul@company.com"
                   value={inviteEmail}
                   onChange={(e) => setInviteEmail(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-emerald-500"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 p-3 text-sm text-white focus:border-sky-400 focus:outline-none"
                 />
               </div>
 
-              <div className="p-3 bg-slate-950 rounded-lg border border-slate-800 text-slate-400 text-[11px]">
-                Upon invitation, the employee will receive an email containing the company license key and password setup link.
+              <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-3 text-xs leading-5 text-slate-400">
+                We’ll email them a secure link to join your workspace.
               </div>
 
               <div className="pt-2 flex items-center justify-end space-x-2">
                 <button
                   type="button"
                   onClick={() => setShowInviteModal(false)}
-                  className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-medium"
+                  className="rounded-lg px-3.5 py-2.5 text-sm font-medium text-slate-300 transition hover:bg-slate-800"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={inviteLoading}
-                  className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-slate-950 font-bold rounded-lg"
+                  className="rounded-lg bg-sky-400 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-sky-300 disabled:opacity-50"
                 >
                   {inviteLoading ? 'Sending Invitation...' : 'Send Invitation'}
                 </button>

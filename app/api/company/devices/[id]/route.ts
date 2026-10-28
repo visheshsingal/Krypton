@@ -37,6 +37,8 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
 
     device.status = 'revoked';
     device.revokedAt = new Date();
+    device.usbMonitoringConsentAt = undefined;
+    device.usbMonitoringConsentVersion = undefined;
     await device.save();
     await BrowserExtensionSession.updateMany(
       { companyId, desktopDeviceId: device.deviceId, status: { $in: ['pending', 'active'] } },

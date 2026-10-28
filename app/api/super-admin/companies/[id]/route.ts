@@ -11,6 +11,7 @@ import { Membership } from '@/models/Membership';
 import { SecurityEvent } from '@/models/SecurityEvent';
 import { SecurityPolicy } from '@/models/SecurityPolicy';
 import { User } from '@/models/User';
+import { UsbAuditHead, UsbTransferEvent } from '@/models/UsbTransferEvent';
 import { logAuditEvent } from '@/lib/audit';
 
 async function authorizeSuperAdmin(req: NextRequest) {
@@ -124,6 +125,8 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
       SecurityPolicy.deleteMany({ companyId }),
       Invitation.deleteMany({ companyId }),
       DetectionRule.deleteMany({ companyId }),
+      UsbTransferEvent.deleteMany({ companyId }),
+      UsbAuditHead.deleteMany({ companyId }),
     ]);
     await Company.deleteOne({ _id: companyId });
 

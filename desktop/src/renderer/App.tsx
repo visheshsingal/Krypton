@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AlertTriangle, Eye, EyeOff, KeyRound, LogOut, Shield, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, Eye, EyeOff, HardDrive, KeyRound, LogOut, Shield, ShieldCheck } from 'lucide-react';
 
 type DesktopState = {
   license?: string;
@@ -8,6 +8,16 @@ type DesktopState = {
     name?: string;
     email?: string;
   };
+  usbMonitoringEnabled?: boolean;
+};
+
+type UsbMonitorStatus = {
+  enabled: boolean;
+  active: boolean;
+  platform: string;
+  connectedDevices: number;
+  lastEventAt: string | null;
+  error: string | null;
 };
 
 type ActivationResult = {
@@ -25,9 +35,23 @@ type BrowserExtensionStatus = {
   error?: string;
 };
 
+type WebsiteProtectionAvailability = {
+  available: boolean;
+  status: string;
+  platform: string;
+  browsers: Array<'chrome' | 'edge'>;
+};
+
 type KryptonDesktopBridge = {
   getDeviceInfo: () => Promise<{ deviceId?: string; deviceName?: string; osVersion?: string }>;
   getStoredState: () => Promise<DesktopState | null>;
+  getUsbMonitorStatus: () => Promise<UsbMonitorStatus>;
+  setUsbMonitoringEnabled: (enabled: boolean) => Promise<{ success: boolean; status?: UsbMonitorStatus; error?: string }>;
+  getWebsiteProtectionAvailability: () => Promise<WebsiteProtectionAvailability>;
+  openProtectedBrowser: (
+    browser: 'chrome' | 'edge',
+    site: string,
+  ) => Promise<{ success: boolean; error?: string }>;
   createExtensionPairing: (browser: 'chrome' | 'edge') => Promise<{
     success: boolean;
     pairingCode?: string;
@@ -50,9 +74,13 @@ type KryptonDesktopBridge = {
 const desktopBridge = (window as Window & { kryptonDesktop?: KryptonDesktopBridge }).kryptonDesktop;
 
 export default function App() {
-  const [deviceInfo, setDeviceInfo] = useState<{ deviceId?: string; deviceName?: string; osVersion?: string } | null>(null);
+  const [deviceInfo, setDeviceInfo] = useState<{ deviceId?: string; deviceName?: string; osVersion?: string; platform?: string } | null>(null);
   const [storedState, setStoredState] = useState<DesktopState | null>(null);
+  const [usbStatus, setUsbStatus] = useState<UsbMonitorStatus | null>(null);
+  const [usbLoading, setUsbLoading] = useState(false);
+  const [usbError, setUsbError] = useState<string | null>(null);
   const [extensionStatus, setExtensionStatus] = useState<BrowserExtensionStatus | null>(null);
+  const [protectionAvailability, setProtectionAvailability] = useState<WebsiteProtectionAvailability | null>(null);
   const [isActivated, setIsActivated] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
   const [licenseKeyInput, setLicenseKeyInput] = useState('');
@@ -69,6 +97,10 @@ export default function App() {
   const [extensionDownloadLoading, setExtensionDownloadLoading] = useState(false);
   const [extensionDownloadMessage, setExtensionDownloadMessage] = useState<string | null>(null);
   const [extensionDirectory, setExtensionDirectory] = useState<string | null>(null);
+  const [selectedAiSite, setSelectedAiSite] = useState('chatgpt');
+  const [protectedBrowserLoading, setProtectedBrowserLoading] = useState(false);
+  const [protectedBrowserMessage, setProtectedBrowserMessage] = useState<string | null>(null);
+  const [protectedBrowserError, setProtectedBrowserError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!desktopBridge) {
@@ -79,10 +111,12 @@ export default function App() {
     Promise.all([
       desktopBridge.getDeviceInfo(),
       desktopBridge.getStoredState(),
+      desktopBridge.getUsbMonitorStatus(),
     ])
-      .then(([device, state]) => {
+      .then(([device, state, usb]) => {
         setDeviceInfo(device);
         setStoredState(state);
+        setUsbStatus(usb);
         setIsActivated(Boolean(state?.license && state?.token));
       })
       .catch((error: unknown) => {
@@ -98,8 +132,10 @@ export default function App() {
     const refreshStatus = async () => {
       try {
         const status = await desktopBridge.getExtensionStatus();
+        const availability = await desktopBridge.getWebsiteProtectionAvailability();
         if (active) {
           setExtensionStatus(status);
+          setProtectionAvailability(availability);
           if (status.protectionActive) setPairingCode(null);
         }
       } catch (error) {
@@ -121,6 +157,70 @@ export default function App() {
       window.clearInterval(interval);
     };
   }, [isActivated, pairingCode]);
+
+  useEffect(() => {
+    if (!isActivated || !desktopBridge) return;
+    let active = true;
+    const refreshUsbStatus = async () => {
+      try {
+        const status = await desktopBridge.getUsbMonitorStatus();
+        if (active) setUsbStatus(status);
+      } catch (error) {
+        if (active) setUsbError(error instanceof Error ? error.message : 'Could not load USB monitoring status.');
+      }
+    };
+    void refreshUsbStatus();
+    const interval = window.setInterval(refreshUsbStatus, 5000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [isActivated]);
+
+  async function handleOpenProtectedAiSite() {
+    if (!desktopBridge) return;
+    setProtectedBrowserLoading(true);
+    setProtectedBrowserError(null);
+    setProtectedBrowserMessage(null);
+    try {
+      const result = await desktopBridge.openProtectedBrowser(selectedBrowser, selectedAiSite);
+      if (!result.success) {
+        setProtectedBrowserError(result.error || 'Could not open the protected AI website.');
+        return;
+      }
+
+      async function handleUsbMonitoringChange(enabled: boolean) {
+        if (!desktopBridge) return;
+        setUsbLoading(true);
+        setUsbError(null);
+        try {
+          const result = await desktopBridge.setUsbMonitoringEnabled(enabled);
+          if (result.status) setUsbStatus(result.status);
+          if (!enabled) {
+            setStoredState((state) => state ? { ...state, usbMonitoringEnabled: false } : state);
+          }
+          if (!result.success) {
+            setUsbError(result.error || 'Could not change USB monitoring.');
+            return;
+          }
+          setStoredState((state) => state ? { ...state, usbMonitoringEnabled: enabled } : state);
+        } catch (error) {
+          setUsbError(error instanceof Error ? error.message : 'Could not change USB monitoring.');
+        } finally {
+          setUsbLoading(false);
+        }
+      }
+      const appName = selectedAiSite === 'chatgpt' ? 'ChatGPT' :
+        selectedAiSite === 'copilot' ? 'Copilot' :
+          selectedAiSite === 'claude' ? 'Claude' :
+            selectedAiSite === 'gemini' ? 'Gemini' : 'Perplexity';
+      setProtectedBrowserMessage(`${appName} opened in the Krypton-managed ${selectedBrowser === 'chrome' ? 'Chrome' : 'Edge'} profile.`);
+    } catch (error) {
+      setProtectedBrowserError(error instanceof Error ? error.message : 'Could not open the protected AI website.');
+    } finally {
+      setProtectedBrowserLoading(false);
+    }
+  }
 
   async function handleActivate(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -157,6 +257,7 @@ export default function App() {
       const result = await desktopBridge.logout();
       setStoredState(null);
       setIsActivated(false);
+      setUsbStatus(null);
       setPairingCode(null);
       setExtensionStatus(null);
       setActivationError(result.warning || null);
@@ -211,8 +312,8 @@ export default function App() {
 
   if (!desktopBridge) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950 p-6 text-slate-100">
-        <div className="max-w-md rounded-xl border border-slate-800 bg-slate-900 p-6 text-center">
+      <div className="flex min-h-screen items-center justify-center bg-[#070b14] p-6 text-slate-100">
+        <div className="max-w-md rounded-2xl border border-slate-800/80 bg-[#0b1220] p-7 text-center shadow-2xl">
           <h1 className="text-lg font-semibold text-white">Krypton desktop runtime unavailable</h1>
           <p className="mt-2 text-sm text-slate-400">Activation is available in the installed desktop application.</p>
         </div>
@@ -222,16 +323,18 @@ export default function App() {
 
   if (isInitializing) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-sm text-slate-400">
-        Checking activation…
+      <div className="flex min-h-screen items-center justify-center gap-3 bg-[#070b14] text-sm text-slate-400">
+        <span className="h-4 w-4 animate-spin rounded-full border-2 border-sky-300/25 border-t-sky-300" />
+        Connecting to Krypton…
       </div>
     );
   }
 
   if (!isActivated) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-slate-950 p-6 text-slate-100">
-        <div className="w-full max-w-md rounded-xl border border-slate-800 bg-slate-900 p-8 shadow-2xl">
+      <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-[#070b14] p-6 text-slate-100">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_0%,rgba(14,165,233,0.12),transparent_58%)]" />
+        <div className="relative w-full max-w-md rounded-2xl border border-slate-800/80 bg-[#0b1220]/95 p-8 shadow-[0_24px_100px_rgba(2,132,199,0.12)]">
           <div className="mb-6 flex items-center gap-3">
             <div className="rounded-lg border border-sky-400/20 bg-sky-400/10 p-2.5">
               <Shield className="h-7 w-7 text-sky-300" />
@@ -328,47 +431,51 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      <header className="flex items-center justify-between border-b border-slate-800 bg-slate-900 px-6 py-4">
+    <div className="min-h-screen bg-[#070b14] text-slate-100">
+    <header className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-800/80 bg-[#0b1220]/90 px-5 py-3.5 backdrop-blur-xl sm:px-8">
         <div className="flex items-center gap-3">
-          <div className="rounded-lg border border-sky-400/20 bg-sky-400/10 p-2">
-            <Shield className="h-5 w-5 text-sky-300" />
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-sky-300/20 bg-sky-300/10 text-sky-200">
+          <Shield className="h-5 w-5" />
           </div>
           <div>
-            <h1 className="font-semibold text-white">Krypton Security</h1>
-            <p className="text-xs text-slate-400">Account activated</p>
-          </div>
+          <h1 className="text-sm font-semibold tracking-tight text-white">Krypton</h1>
+          <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            Protection workspace
+          </p>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="text-right text-xs">
-            <p className="font-medium text-slate-200">{storedState?.user?.name || 'Employee'}</p>
-            <p className="text-slate-400">{storedState?.user?.email || 'Activated user'}</p>
-          </div>
-          <button
-            onClick={handleLogout}
-            title="Log out"
-            className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
-          >
-            <LogOut className="h-4 w-4" />
-          </button>
+      </div>
+      <div className="flex items-center gap-3">
+        <div className="hidden text-right text-xs sm:block">
+          <p className="font-medium text-slate-200">{storedState?.user?.name || 'Employee'}</p>
+          <p className="mt-0.5 text-[11px] text-slate-500">{storedState?.user?.email || 'Activated user'}</p>
         </div>
-      </header>
+        <button
+          onClick={handleLogout}
+          title="Log out"
+          className="flex items-center gap-2 rounded-lg border border-slate-800 px-2.5 py-2 text-xs text-slate-400 transition hover:border-rose-400/20 hover:bg-rose-400/5 hover:text-rose-300"
+        >
+          <LogOut className="h-4 w-4" />
+          <span className="hidden sm:inline">Sign out</span>
+        </button>
+      </div>
+    </header>
 
-      <main className="mx-auto max-w-2xl px-6 py-12">
-        <section className="rounded-2xl border border-sky-300/20 bg-slate-900 p-7 shadow-[0_24px_100px_rgba(2,132,199,0.12)]">
-          <div className="flex items-start gap-4">
-            <div className="rounded-xl border border-sky-300/20 bg-sky-400/10 p-3">
-              <ShieldCheck className="h-6 w-6 text-sky-300" />
+    <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-12">
+      <section className="overflow-hidden rounded-2xl border border-slate-800/80 bg-[#0b1220] shadow-[0_24px_100px_rgba(2,132,199,0.08)]">
+        <div className="border-b border-slate-800/80 bg-gradient-to-r from-sky-400/[0.08] to-transparent px-5 py-5 sm:px-7">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-sky-300/20 bg-sky-400/10">
+            <ShieldCheck className="h-6 w-6 text-sky-300" />
             </div>
             <div>
-              <h2 className="text-xl font-semibold text-white">Browser protection</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-400">
-                Use the shared Krypton extension in Chrome or Edge. It checks supported AI prompts locally.
-              </p>
+              <h2 className="text-lg font-semibold tracking-tight text-white">Browser protection</h2>
+              <p className="mt-1 text-xs text-slate-400">Connect Krypton to Chrome or Edge</p>
             </div>
           </div>
+        </div>
 
-          <div className="mt-6 rounded-lg border border-slate-700 bg-slate-950/70 p-4">
+        <div className="mx-5 mt-5 rounded-xl border border-slate-800 bg-[#080e19] p-4 sm:mx-7">
             <div className="flex items-center justify-between gap-3">
               <span className="text-xs text-slate-400">Extension status</span>
               <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
@@ -403,22 +510,72 @@ export default function App() {
             )}
           </div>
 
-          <div className="mt-5 space-y-4">
-            <div>
-              <label htmlFor="extension-browser" className="mb-1 block text-xs font-medium text-slate-300">
-                Browser
-              </label>
-              <select
-                id="extension-browser"
-                value={selectedBrowser}
-                onChange={(event) => setSelectedBrowser(event.target.value as 'chrome' | 'edge')}
-                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
-              >
-                <option value="chrome">Google Chrome</option>
-                <option value="edge">Microsoft Edge</option>
-              </select>
+          <div className="mx-5 mt-4 rounded-xl border border-sky-300/15 bg-sky-300/[0.04] p-4 sm:mx-7">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-sky-300/15 bg-sky-300/10">
+                <ShieldCheck className="h-4 w-4 text-sky-200" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-sm font-semibold text-white">Protected AI websites</h3>
+                <p className="mt-1 text-xs leading-5 text-slate-400">
+                  Open ChatGPT, Copilot, Claude, Gemini, or Perplexity in a separate Krypton-managed browser profile.
+                  Recognized prompt requests are scanned locally before they are sent.
+                </p>
+              </div>
             </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+              <label className="block text-xs font-medium text-slate-300">
+                AI website
+                <select
+                  value={selectedAiSite}
+                  onChange={(event) => setSelectedAiSite(event.target.value)}
+                  className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100"
+                >
+                  <option value="chatgpt">ChatGPT web</option>
+                  <option value="copilot">Copilot web</option>
+                  <option value="claude">Claude web</option>
+                  <option value="gemini">Gemini web</option>
+                  <option value="perplexity">Perplexity web</option>
+                </select>
+              </label>
+              <label className="block text-xs font-medium text-slate-300">
+                Browser
+                <select
+                  value={selectedBrowser}
+                  onChange={(event) => setSelectedBrowser(event.target.value as 'chrome' | 'edge')}
+                  className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100"
+                >
+                  <option value="chrome">Google Chrome</option>
+                  <option value="edge">Microsoft Edge</option>
+                </select>
+              </label>
+              <button
+                type="button"
+                onClick={() => void handleOpenProtectedAiSite()}
+                disabled={protectedBrowserLoading || protectionAvailability?.available === false}
+                className="self-end rounded-lg bg-sky-400 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-sky-300 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {protectedBrowserLoading ? 'Opening…' : 'Open protected'}
+              </button>
+            </div>
+            {protectionAvailability?.available === false && (
+              <p className="mt-3 text-xs text-amber-200">
+                Protected browsing is unavailable ({protectionAvailability.status.replaceAll('_', ' ')}).
+                Use Windows with an active license and Chrome or Edge installed.
+              </p>
+            )}
+            {protectedBrowserMessage && <p role="status" className="mt-3 text-xs text-emerald-300">{protectedBrowserMessage}</p>}
+            {protectedBrowserError && <p role="alert" className="mt-3 text-xs text-rose-300">{protectedBrowserError}</p>}
+            <p className="mt-3 border-t border-slate-800/80 pt-3 text-[11px] leading-5 text-slate-500">
+              Only known supported web request endpoints are inspected; provider changes or unrecognized submission routes may not be covered.
+            </p>
+            <p className="mt-2 text-[11px] leading-5 text-slate-500">
+              Standalone ChatGPT/Copilot desktop apps and other desktop applications are not protected. They do not expose a supported
+              pre-submit scanning interface; Krypton does not monitor keystrokes, clipboard contents, or unrelated app input.
+            </p>
+          </div>
 
+          <div className="space-y-4 px-5 pb-6 pt-5 sm:px-7">
             <button
               type="button"
               onClick={() => void handleDownloadExtension()}
@@ -430,11 +587,19 @@ export default function App() {
             {extensionDownloadMessage && (
               <p role="status" className="text-xs text-emerald-300">{extensionDownloadMessage}</p>
             )}
-            <ol className="list-decimal space-y-1 pl-5 text-xs leading-5 text-slate-400">
-              <li>Click the button; Krypton downloads, verifies, and extracts the extension automatically.</li>
-              <li>Open {selectedBrowser === 'chrome' ? 'chrome://extensions' : 'edge://extensions'} and turn on Developer mode.</li>
-              <li>Click “Load unpacked” and select the Krypton folder shown below. This browser approval is required once.</li>
-              <li>After it loads, return here, generate a one-time code, then enter it in the extension popup.</li>
+            <ol className="grid gap-2 text-xs leading-5 text-slate-400 sm:grid-cols-3">
+              <li className="rounded-lg border border-slate-800/80 bg-slate-950/50 p-3">
+                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-sky-300">01 · Prepare</span>
+                Download and verify the extension package automatically.
+              </li>
+              <li className="rounded-lg border border-slate-800/80 bg-slate-950/50 p-3">
+                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-sky-300">02 · Add to browser</span>
+                Enable Developer mode, choose “Load unpacked”, and select the folder below.
+              </li>
+              <li className="rounded-lg border border-slate-800/80 bg-slate-950/50 p-3">
+                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-sky-300">03 · Connect</span>
+                Generate a one-time code and enter it in the extension popup.
+              </li>
             </ol>
             {extensionDirectory && (
               <div className="rounded-lg border border-slate-700 bg-slate-950 p-3">
@@ -449,10 +614,6 @@ export default function App() {
                 </button>
               </div>
             )}
-            <p className="text-[11px] leading-5 text-slate-500">
-              This ZIP is for development or managed installation. Chrome Web Store publishing and its approved listing are not configured yet. The code expires after 10 minutes and can be used once.
-            </p>
-
             <button
               type="button"
               onClick={() => void handleCreatePairingCode()}
@@ -472,10 +633,63 @@ export default function App() {
             )}
             {extensionError && <p role="alert" className="text-xs text-red-300">{extensionError}</p>}
             <p className="text-[11px] leading-5 text-slate-500">
-              Prompt text and detected secrets are scanned locally and are not uploaded. Only redacted incident metadata is reported. Protection covers supported AI sites in Chrome/Edge, not other pages or browsers.
+              Prompt contents are scanned locally. Only redacted event metadata is sent. Protection applies to supported AI sites in this managed browser profile.
             </p>
-            <p className="text-[11px] text-slate-500">
-              Device: {deviceInfo?.deviceName || 'This computer'} · {deviceInfo?.osVersion || 'Desktop OS'}
+          </div>
+        </section>
+
+        <section className="mt-5 overflow-hidden rounded-2xl border border-slate-800/80 bg-[#0b1220]">
+          <div className="border-b border-slate-800/80 px-5 py-5 sm:px-7">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-sky-300/20 bg-sky-400/10">
+                <HardDrive className="h-5 w-5 text-sky-200" />
+              </div>
+              <div>
+                <h2 className="text-base font-semibold text-white">USB activity monitoring</h2>
+                <p className="mt-1 text-xs text-slate-400">Optional · Windows removable drives only</p>
+              </div>
+            </div>
+          </div>
+          <div className="space-y-4 p-5 sm:p-7">
+            <p className="text-xs leading-5 text-slate-400">
+              If enabled, Krypton reports USB drive connections and metadata for files created or changed on those drives:
+              file name, extension, size, time, and destination. File contents are never read or uploaded.
+              Windows does not expose a reliable source path or verified copy-completion signal to this unprivileged monitor.
+            </p>
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-700/80 bg-slate-950/60 p-4">
+              <input
+                type="checkbox"
+                checked={storedState?.usbMonitoringEnabled === true}
+                onChange={(event) => void handleUsbMonitoringChange(event.target.checked)}
+                disabled={usbLoading || (deviceInfo?.platform !== 'win32' && usbStatus?.platform !== 'win32')}
+                className="mt-0.5 h-4 w-4 accent-sky-400"
+              />
+              <span>
+                <span className="block text-sm font-medium text-slate-200">I agree to enable USB activity monitoring on this device</span>
+                <span className="mt-1 block text-[11px] leading-5 text-slate-500">
+                  Your company administrator can view the reported metadata. You can turn this off at any time here.
+                </span>
+              </span>
+            </label>
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <span className={`inline-flex items-center gap-2 ${usbStatus?.active ? 'text-emerald-300' : 'text-slate-400'}`}>
+                <span className={`h-2 w-2 rounded-full ${usbStatus?.active ? 'bg-emerald-400' : 'bg-slate-600'}`} />
+                {usbLoading ? 'Updating…' : usbStatus?.active
+                  ? `Monitoring active · ${usbStatus.connectedDevices} removable drive(s)`
+                  : storedState?.usbMonitoringEnabled ? 'Consented · waiting for a validated connection' : 'Monitoring off'}
+              </span>
+              {usbStatus?.lastEventAt && (
+                <span className="text-[11px] text-slate-500">Last event {new Date(usbStatus.lastEventAt).toLocaleString()}</span>
+              )}
+            </div>
+            {usbError && <p role="alert" className="text-xs text-rose-300">{usbError}</p>}
+            {usbStatus?.error && <p role="alert" className="text-xs text-amber-200">{usbStatus.error}</p>}
+            {deviceInfo?.platform !== 'win32' && (
+              <p className="text-[11px] leading-5 text-amber-200">This feature is currently supported on Windows only.</p>
+            )}
+            <p className="text-[11px] leading-5 text-slate-500">
+              Monitoring uses Windows removable-drive metadata and directory notifications only. It does not use keyboard hooks,
+              clipboard capture, administrator privileges, or a kernel driver. A destination write is an observation, not proof that a transfer completed.
             </p>
           </div>
         </section>

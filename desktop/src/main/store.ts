@@ -15,6 +15,7 @@ interface DesktopStoredData {
   lastHeartbeatAt?: string;
   lastSuccessfulValidation?: string;
   offlineGraceHours?: number;
+  usbMonitoringEnabled?: boolean;
 }
 
 export class DesktopStore {
@@ -46,6 +47,7 @@ export class DesktopStore {
       deviceId,
       deviceName: process.env.COMPUTERNAME || process.env.HOSTNAME || 'Krypton Workstation',
       offlineGraceHours: 72,
+      usbMonitoringEnabled: false,
     };
     this.saveData(defaultData);
     return defaultData;
@@ -78,6 +80,7 @@ export class DesktopStore {
     delete this.data.user;
     delete this.data.license;
     delete this.data.lastSuccessfulValidation;
+    this.data.usbMonitoringEnabled = false;
     this.saveData(this.data);
   }
 }

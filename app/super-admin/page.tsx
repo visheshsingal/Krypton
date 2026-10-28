@@ -20,6 +20,7 @@ import {
   Lock,
   Eye,
   EyeOff,
+  Search,
 } from 'lucide-react';
 
 export default function SuperAdminDashboard() {
@@ -29,6 +30,9 @@ export default function SuperAdminDashboard() {
   const [companies, setCompanies] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'overview' | 'companies' | 'logs'>('overview');
+  const [companySearch, setCompanySearch] = useState('');
+  const [companyStatusFilter, setCompanyStatusFilter] = useState('');
+  const [auditSearch, setAuditSearch] = useState('');
 
   // License Modal State
   const [showLicenseModal, setShowLicenseModal] = useState(false);
@@ -301,117 +305,175 @@ export default function SuperAdminDashboard() {
     totalDevices: 0,
     totalEvents: 0,
   };
+  const filteredCompanies = companies.filter((company) => {
+    const term = companySearch.toLowerCase();
+    const matchesSearch = !term || [company.name, company.slug, company.adminName, company.adminEmail, company.contactEmail]
+      .some((value) => String(value || '').toLowerCase().includes(term));
+    const matchesStatus = !companyStatusFilter ||
+      (companyStatusFilter === 'unlicensed' ? !company.license : company.status === companyStatusFilter);
+    return matchesSearch && matchesStatus;
+  });
+  const filteredAuditLogs = auditLogs.filter((log) => {
+    const term = auditSearch.toLowerCase();
+    return !term || [log.action, log.actorEmail, log.actorRole, log.entityType, log.entityId, log.ipAddress]
+      .some((value) => String(value || '').toLowerCase().includes(term));
+  });
+  const trendDays = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date();
+    date.setUTCHours(0, 0, 0, 0);
+    date.setUTCDate(date.getUTCDate() - (6 - index));
+    const day = date.toISOString().slice(0, 10);
+    const entries = (overview?.eventTrend || []).filter((entry: any) => entry.day === day);
+    return {
+      day,
+      label: date.toLocaleDateString(undefined, { weekday: 'short', timeZone: 'UTC' }),
+      block: entries.filter((entry: any) => entry.action === 'block').reduce((sum: number, entry: any) => sum + entry.count, 0),
+      allow: entries.filter((entry: any) => entry.action === 'allow').reduce((sum: number, entry: any) => sum + entry.count, 0),
+      warn: entries.filter((entry: any) => entry.action === 'warn').reduce((sum: number, entry: any) => sum + entry.count, 0),
+    };
+  });
+  const trendMax = Math.max(1, ...trendDays.map((day) => day.block + day.allow + day.warn));
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
+    <div className="min-h-screen bg-[#070b14] text-slate-100 flex flex-col font-sans">
       {/* Top Bar */}
-      <header className="bg-slate-900 border-b border-slate-800 px-6 py-3.5 flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <div className="p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-emerald-400">
-            <Shield className="w-5 h-5" />
+      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-800/80 bg-[#0b1220]/90 px-4 py-3 backdrop-blur-xl sm:px-6">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-sky-300/20 bg-gradient-to-br from-sky-300/15 to-blue-500/5 text-sky-200 shadow-[0_0_24px_rgba(56,189,248,0.08)]">
+            <Shield className="h-5 w-5" />
           </div>
-          <div>
-            <div className="flex items-center space-x-2">
-              <span className="font-bold text-sm tracking-tight text-white">KRYPTON ROOT PLATFORM</span>
-              <span className="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded font-mono uppercase font-bold">
-                Super Admin
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="truncate text-sm font-semibold tracking-tight text-white">Krypton</span>
+              <span className="rounded-md border border-sky-300/20 bg-sky-300/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-sky-200">
+                Platform admin
               </span>
             </div>
-            <p className="text-[11px] text-slate-400">Platform-Wide Oversight & Seat Licensing</p>
+            <p className="mt-0.5 text-[11px] text-slate-500">Global workspace management</p>
           </div>
         </div>
 
-        <div className="flex items-center space-x-4">
-          <span className="text-xs text-slate-400">{adminEmail}</span>
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+          <div className="hidden max-w-48 text-right text-xs sm:block">
+            <div className="truncate font-medium text-slate-200">{adminEmail}</div>
+            <div className="mt-0.5 text-[10px] text-slate-500">Super administrator</div>
+          </div>
+          <div className="hidden h-8 w-px bg-slate-800 sm:block" />
           <button
             onClick={handleLogout}
-            className="p-2 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-lg transition"
-            title="Sign Out"
+            className="flex items-center gap-2 rounded-lg border border-slate-800 px-2.5 py-2 text-xs text-slate-400 transition hover:border-rose-400/20 hover:bg-rose-400/5 hover:text-rose-300"
+            title="Sign out"
+            aria-label="Sign out"
           >
-            <LogOut className="w-4 h-4" />
+            <LogOut className="h-4 w-4" />
+            <span className="hidden sm:inline">Sign out</span>
           </button>
         </div>
       </header>
 
       {/* Main Layout */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex flex-col md:flex-row">
         {/* Sidebar */}
-        <aside className="w-60 bg-slate-900/60 border-r border-slate-800 p-4 space-y-1">
-          <button
-            onClick={() => setActiveTab('overview')}
-            className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition ${
-              activeTab === 'overview'
-                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-            }`}
-          >
-            <Layers className="w-4 h-4" />
-            <span>Platform Overview</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('companies')}
-            className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition ${
-              activeTab === 'companies'
-                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-            }`}
-          >
-            <Building2 className="w-4 h-4" />
-            <span>Companies & Licenses ({companies.length})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('logs')}
-            className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition ${
-              activeTab === 'logs'
-                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-            }`}
-          >
-            <FileText className="w-4 h-4" />
-            <span>System Audit Logs</span>
-          </button>
+        <aside className="shrink-0 border-b border-slate-800/80 bg-[#0b1220] md:w-60 md:border-b-0 md:border-r">
+          <div className="hidden px-5 pb-3 pt-6 md:block">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600">Platform</span>
+          </div>
+          <nav aria-label="Super Admin dashboard" className="flex gap-1 overflow-x-auto p-2 sm:px-4 md:block md:space-y-1 md:px-3 md:pb-5 md:pt-1">
+            {([
+              { id: 'overview', label: 'Overview', icon: Layers },
+              { id: 'companies', label: 'Companies & licenses', icon: Building2 },
+              { id: 'logs', label: 'System activity', icon: FileText },
+            ] as const).map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                onClick={() => setActiveTab(id)}
+                aria-current={activeTab === id ? 'page' : undefined}
+                className={`group relative flex shrink-0 items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-medium transition md:w-full ${
+                  activeTab === id
+                    ? 'bg-sky-300/10 text-sky-100 ring-1 ring-inset ring-sky-300/15'
+                    : 'text-slate-400 hover:bg-slate-800/70 hover:text-slate-100'
+                }`}
+              >
+                {activeTab === id && <span className="absolute bottom-2 left-0 top-2 w-0.5 rounded-full bg-sky-300 md:hidden" />}
+                <Icon className={`h-4 w-4 shrink-0 ${activeTab === id ? 'text-sky-300' : 'text-slate-500 group-hover:text-slate-300'}`} />
+                <span>{label}</span>
+                {id === 'companies' && (
+                  <span className={`ml-auto rounded-md px-1.5 py-0.5 text-[10px] tabular-nums ${activeTab === id ? 'bg-sky-300/10 text-sky-200' : 'bg-slate-800 text-slate-500'}`}>
+                    {companies.length}
+                  </span>
+                )}
+              </button>
+            ))}
+          </nav>
         </aside>
 
         {/* Content Area */}
-        <main className="flex-1 overflow-y-auto p-8 bg-slate-950">
+        <main className="min-w-0 flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-[#070b14]">
           {/* TAB 1: OVERVIEW */}
           {activeTab === 'overview' && (
-            <div className="max-w-6xl space-y-8">
+            <div className="mx-auto max-w-6xl space-y-6 sm:space-y-8">
               <div>
-                <h1 className="text-xl font-bold text-white">System Architecture & Licensing Overview</h1>
-                <p className="text-xs text-slate-400 mt-1">
-                  Global metrics across all corporate tenants on Vercel Serverless + MongoDB Atlas.
-                </p>
+                <h1 className="text-2xl font-semibold tracking-tight text-white">Platform overview</h1>
+                <p className="mt-1 text-sm text-slate-400">A live view of customer workspaces, seat usage, and recorded activity.</p>
               </div>
 
               {/* Metrics Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-1">
+                <div className="rounded-2xl border border-slate-800/80 bg-[#0b1220] p-5 space-y-1">
                   <div className="text-xs text-slate-400">Total Companies</div>
                   <div className="text-2xl font-extrabold text-white">{metrics.totalCompanies}</div>
                   <div className="text-[11px] text-emerald-400">{metrics.activeCompanies} active workspaces</div>
                 </div>
 
-                <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-1">
+                <div className="rounded-2xl border border-slate-800/80 bg-[#0b1220] p-5 space-y-1">
                   <div className="text-xs text-slate-400">Licensed User Seats</div>
                   <div className="text-2xl font-extrabold text-white">{metrics.totalLicensedSeats}</div>
                   <div className="text-[11px] text-slate-400">{metrics.totalOccupiedSeats} seats actively occupied</div>
                 </div>
 
-                <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-1">
+                <div className="rounded-2xl border border-slate-800/80 bg-[#0b1220] p-5 space-y-1">
                   <div className="text-xs text-slate-400">Active Workstation Devices</div>
                   <div className="text-2xl font-extrabold text-white">{metrics.totalDevices}</div>
                   <div className="text-[11px] text-emerald-400">Windows endpoints registered</div>
                 </div>
 
-                <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-1">
-                  <div className="text-xs text-slate-400">Blocked Security Events</div>
+                <div className="rounded-2xl border border-slate-800/80 bg-[#0b1220] p-5 space-y-1">
+                  <div className="text-xs text-slate-400">Recorded security events</div>
                   <div className="text-2xl font-extrabold text-white">{metrics.totalEvents}</div>
-                  <div className="text-[11px] text-red-400">Leaked secrets intercepted</div>
+                  <div className="text-[11px] text-slate-500">All recorded policy outcomes</div>
                 </div>
               </div>
+
+              <section className="rounded-2xl border border-slate-800/80 bg-[#0b1220] p-5 sm:p-6">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-base font-semibold text-white">Platform activity</h2>
+                    <p className="mt-1 text-xs text-slate-500">Recorded events over the last 7 days</p>
+                  </div>
+                  <div className="flex gap-4 text-[11px] text-slate-400">
+                    <span><i className="mr-1.5 inline-block h-2 w-2 rounded-full bg-sky-400" />Allowed</span>
+                    <span><i className="mr-1.5 inline-block h-2 w-2 rounded-full bg-amber-400" />Warned</span>
+                    <span><i className="mr-1.5 inline-block h-2 w-2 rounded-full bg-rose-400" />Blocked</span>
+                  </div>
+                </div>
+                <div className="mt-6 grid h-36 grid-cols-7 items-end gap-3">
+                  {trendDays.map((day) => {
+                    const total = day.allow + day.warn + day.block;
+                    const height = total ? Math.max(5, (total / trendMax) * 100) : 2;
+                    return (
+                      <div key={day.day} className="flex h-full flex-col items-center justify-end gap-2">
+                        <span className="text-[10px] tabular-nums text-slate-500">{total || ''}</span>
+                        <div className="flex w-full max-w-12 flex-col justify-end overflow-hidden rounded-t-md bg-slate-800/60" style={{ height: `${height}%` }} title={`${total} events`}>
+                          <div className="bg-rose-400" style={{ height: `${total ? (day.block / total) * 100 : 0}%` }} />
+                          <div className="bg-amber-400" style={{ height: `${total ? (day.warn / total) * 100 : 0}%` }} />
+                          <div className="bg-sky-400" style={{ height: `${total ? (day.allow / total) * 100 : 0}%` }} />
+                        </div>
+                        <span className="text-[10px] text-slate-500">{day.label}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
 
               {/* Companies Snapshot */}
               <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
@@ -465,11 +527,11 @@ export default function SuperAdminDashboard() {
 
           {/* TAB 2: COMPANIES & LICENSES */}
           {activeTab === 'companies' && (
-            <div className="max-w-6xl space-y-6">
-              <div className="flex items-center justify-between">
+            <div className="mx-auto max-w-6xl space-y-6">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h1 className="text-xl font-bold text-white">Corporate Tenants & Seat Licenses</h1>
-                  <p className="text-xs text-slate-400 mt-1">
+                  <h1 className="text-2xl font-semibold tracking-tight text-white">Companies</h1>
+                  <p className="mt-1 text-sm text-slate-400">
                     Create company admins, manage seat limits, and issue or renew licenses.
                   </p>
                 </div>
@@ -506,8 +568,22 @@ export default function SuperAdminDashboard() {
                 </div>
               )}
 
-              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-                <table className="w-full text-left text-xs">
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <div className="relative min-w-0 flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                  <input value={companySearch} onChange={(e) => setCompanySearch(e.target.value)} placeholder="Search companies or admin contacts" className="w-full rounded-xl border border-slate-800 bg-[#0b1220] py-2.5 pl-9 pr-3 text-sm text-white placeholder:text-slate-500 focus:border-sky-400 focus:outline-none" />
+                </div>
+                <select value={companyStatusFilter} onChange={(e) => setCompanyStatusFilter(e.target.value)} aria-label="Filter companies by status" className="rounded-xl border border-slate-800 bg-[#0b1220] px-3 py-2.5 text-sm text-slate-200 sm:w-48">
+                  <option value="">All companies</option>
+                  <option value="active">Active</option>
+                  <option value="suspended">Suspended</option>
+                  <option value="unlicensed">Unlicensed</option>
+                </select>
+                <span className="self-center text-xs text-slate-500">{filteredCompanies.length} of {companies.length}</span>
+              </div>
+
+              <div className="overflow-x-auto rounded-2xl border border-slate-800/80 bg-[#0b1220]">
+                <table className="w-full min-w-[900px] text-left text-xs">
                   <thead className="bg-slate-950/80 border-b border-slate-800 text-slate-400 font-semibold">
                     <tr>
                       <th className="p-4">Company</th>
@@ -520,7 +596,9 @@ export default function SuperAdminDashboard() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60">
-                    {companies.map((comp) => (
+                    {filteredCompanies.length === 0 ? (
+                      <tr><td colSpan={7} className="p-10 text-center text-sm text-slate-500">No companies match these filters.</td></tr>
+                    ) : filteredCompanies.map((comp) => (
                       <tr key={comp.id} className="text-slate-300 hover:bg-slate-800/30">
                         <td className="p-4 font-bold text-white">{comp.name}</td>
                         <td className="p-4 text-slate-400">
@@ -636,16 +714,20 @@ export default function SuperAdminDashboard() {
 
           {/* TAB 4: SYSTEM AUDIT LOGS */}
           {activeTab === 'logs' && (
-            <div className="max-w-6xl space-y-6">
+            <div className="mx-auto max-w-6xl space-y-6">
               <div>
-                <h1 className="text-xl font-bold text-white">Global Compliance Audit Trail</h1>
-                <p className="text-xs text-slate-400 mt-1">
+                <h1 className="text-2xl font-semibold tracking-tight text-white">System activity</h1>
+                <p className="mt-1 text-sm text-slate-400">
                   Immutable record of license creation, seat allocations, and administrative changes across all tenants.
                 </p>
               </div>
 
-              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-                <table className="w-full text-left text-xs">
+              <div className="relative max-w-xl">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                <input value={auditSearch} onChange={(e) => setAuditSearch(e.target.value)} placeholder="Search action, actor, target, or IP" className="w-full rounded-xl border border-slate-800 bg-[#0b1220] py-2.5 pl-9 pr-3 text-sm text-white placeholder:text-slate-500 focus:border-sky-400 focus:outline-none" />
+              </div>
+              <div className="overflow-x-auto rounded-2xl border border-slate-800/80 bg-[#0b1220]">
+                <table className="w-full min-w-[720px] text-left text-xs">
                   <thead className="bg-slate-950/80 border-b border-slate-800 text-slate-400 font-semibold">
                     <tr>
                       <th className="p-4">Timestamp</th>
@@ -656,7 +738,9 @@ export default function SuperAdminDashboard() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60">
-                    {auditLogs.map((log) => (
+                    {filteredAuditLogs.length === 0 ? (
+                      <tr><td colSpan={5} className="p-10 text-center text-sm text-slate-500">No activity matches this search.</td></tr>
+                    ) : filteredAuditLogs.map((log) => (
                       <tr key={log._id || log.id} className="text-slate-300">
                         <td className="p-4 text-slate-500 font-mono text-[11px]">
                           {new Date(log.timestamp).toLocaleString()}

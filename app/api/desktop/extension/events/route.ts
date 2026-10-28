@@ -3,7 +3,9 @@ import { connectDB } from '@/lib/db';
 import { sha256, validateExtensionEntitlement } from '@/lib/extension-licensing';
 import { BrowserExtensionSession } from '@/models/BrowserExtensionSession';
 import { SecurityEvent } from '@/models/SecurityEvent';
+import { SecurityPolicy } from '@/models/SecurityPolicy';
 import { User } from '@/models/User';
+import { PromptSecurityEngine } from '../../../../../desktop/src/engine/scanner';
 
 const riskLevels = new Set(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']);
 const categories = new Set([
@@ -28,8 +30,8 @@ function isCategory(value: unknown): value is
   return typeof value === 'string' && categories.has(value);
 }
 
-function isAction(value: unknown): value is 'block' | 'warn' {
-  return typeof value === 'string' && actions.has(value);
+function isAction(value: unknown): value is 'allow' | 'block' | 'warn' {
+  return typeof value === 'string' && (value === 'allow' || actions.has(value));
 }
 
 export async function POST(req: NextRequest) {
@@ -62,14 +64,30 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid blocked-event metadata.' }, { status: 400 });
     }
     const body = value as Record<string, unknown>;
+    const isPromptSubmission = body.eventType === 'prompt_submission';
     if (
       typeof body.ruleCode !== 'string' ||
       typeof body.ruleName !== 'string' ||
       !isRiskLevel(body.riskLevel) ||
-      !isCategory(body.category) ||
+      (body.category !== undefined && !isCategory(body.category)) ||
+      (!isPromptSubmission && !isCategory(body.category)) ||
       !isAction(body.actionTaken)
     ) {
       return NextResponse.json({ error: 'Invalid blocked-event metadata.' }, { status: 400 });
+    }
+    if (isPromptSubmission && body.actionTaken !== 'allow' && body.actionTaken !== 'block') {
+      return NextResponse.json({ error: 'Invalid prompt submission outcome.' }, { status: 400 });
+    }
+
+    const promptPreview = typeof body.redactedPreview === 'string' ? body.redactedPreview : '';
+    if (promptPreview.length > 10_000) {
+      return NextResponse.json({ error: 'Prompt preview is too long.' }, { status: 400 });
+    }
+
+    const policy = await SecurityPolicy.findOne({ companyId: session.companyId });
+    const promptLoggingEnabled = policy?.redactedPromptLoggingEnabled === true;
+    if (isPromptSubmission && body.actionTaken === 'allow' && !promptLoggingEnabled) {
+      return NextResponse.json({ accepted: false, reason: 'prompt_logging_disabled' });
     }
 
     const hostname = typeof body.hostname === 'string' ? body.hostname.toLowerCase() : '';
@@ -99,6 +117,23 @@ export async function POST(req: NextRequest) {
     if (recentEventCount >= 60) {
       return NextResponse.json({ error: 'Extension event rate limit reached.' }, { status: 429 });
     }
+
+    let redactedPreview = '[Prompt withheld; sensitive content blocked locally]';
+    if (isPromptSubmission && promptLoggingEnabled && promptPreview) {
+      const companyRules = policy?.customRules.map((rule) => ({
+        ruleCode: rule.ruleCode,
+        name: rule.name,
+        description: rule.description,
+        category: rule.category,
+        pattern: rule.pattern,
+        riskLevel: rule.riskLevel,
+        action: rule.action,
+        isEnabled: rule.isEnabled,
+        isBuiltIn: rule.isBuiltIn,
+        explanation: rule.explanation,
+      })) || [];
+      redactedPreview = new PromptSecurityEngine(companyRules).scan(promptPreview).redactedPrompt.slice(0, 4_000);
+    }
     await SecurityEvent.create({
       companyId: session.companyId,
       userId: session.userId,
@@ -110,9 +145,9 @@ export async function POST(req: NextRequest) {
       riskLevel: body.riskLevel,
       ruleCode: body.ruleCode.slice(0, 100),
       ruleName: body.ruleName.slice(0, 200),
-      category: body.category,
+      ...(isCategory(body.category) ? { category: body.category } : {}),
       actionTaken: body.actionTaken,
-      redactedPreview: '[Prompt withheld; sensitive content blocked locally]',
+      redactedPreview,
       explanation: typeof body.explanation === 'string' ? body.explanation.slice(0, 1000) : '',
       timestamp: new Date(),
     });

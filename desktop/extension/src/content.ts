@@ -9,8 +9,11 @@ type ExtensionState = {
 const engine = new PromptSecurityEngine();
 const selector = 'textarea, [contenteditable="true"], [role="textbox"]';
 let authorized = false;
+let currentPolicy: SecurityPolicyDTO | null = null;
 let confirmationOpen = false;
 let banner: HTMLDivElement | null = null;
+let approvedWarning: { prompt: string; expiresAt: number } | null = null;
+let lastReportedSubmission: { key: string; at: number } | null = null;
 
 function requestState(): void {
   chrome.runtime.sendMessage({ type: 'GET_STATE' }, (state?: ExtensionState) => {
@@ -19,7 +22,10 @@ function requestState(): void {
       return;
     }
     authorized = state.authorized;
-    if (state.policy) engine.updatePolicy(state.policy);
+    if (state.policy) {
+      currentPolicy = state.policy;
+      engine.updatePolicy(state.policy);
+    }
   });
 }
 
@@ -29,7 +35,10 @@ chrome.runtime.onMessage.addListener((message) => {
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
   if (changes.authorized) authorized = changes.authorized.newValue === true;
-  if (changes.policy?.newValue) engine.updatePolicy(changes.policy.newValue as SecurityPolicyDTO);
+  if (changes.policy?.newValue) {
+    currentPolicy = changes.policy.newValue as SecurityPolicyDTO;
+    engine.updatePolicy(currentPolicy);
+  }
 });
 
 function visible(element: HTMLElement): boolean {
@@ -84,10 +93,51 @@ function cancel(event: Event): void {
   event.stopImmediatePropagation();
 }
 
+function reportSubmission(
+  result: ReturnType<PromptSecurityEngine['scan']>,
+  prompt: string,
+  outcome: 'allow' | 'block',
+): void {
+  const loggingEnabled = currentPolicy?.redactedPromptLoggingEnabled === true;
+  if (outcome === 'allow' && !loggingEnabled) return;
+
+  const now = Date.now();
+  const key = `${outcome}:${prompt}`;
+  if (lastReportedSubmission?.key === key && now - lastReportedSubmission.at < 1_500) return;
+  lastReportedSubmission = { key, at: now };
+
+  const match = result.matches[0];
+  chrome.runtime.sendMessage({
+    type: 'PROMPT_SUBMISSION',
+    event: {
+      eventType: 'prompt_submission',
+      hostname: location.hostname,
+      riskLevel: result.hasRisk ? result.highestRisk : 'LOW',
+      actionTaken: outcome,
+      ruleCode: match?.ruleCode || 'PROMPT_SUBMISSION',
+      ruleName: match?.ruleName || 'Prompt submission',
+      category: match?.category,
+      explanation: result.explanation,
+      redactedPreview: loggingEnabled ? result.redactedPrompt : undefined,
+    },
+  });
+}
+
 function inspect(event: Event, editor: HTMLElement | null): void {
   if (!authorized || !editor) return;
-  const result = engine.scan(editorText(editor));
-  if (!result.hasRisk || result.action === 'allow') return;
+  const prompt = editorText(editor);
+  if (!prompt.trim()) return;
+  if (approvedWarning && approvedWarning.expiresAt >= Date.now() && approvedWarning.prompt === prompt) {
+    approvedWarning = null;
+    return;
+  }
+  approvedWarning = null;
+
+  const result = engine.scan(prompt);
+  if (!result.hasRisk || result.action === 'allow') {
+    reportSubmission(result, prompt, 'allow');
+    return;
+  }
 
   if (result.action === 'warn') {
     if (confirmationOpen) {
@@ -99,24 +149,17 @@ function inspect(event: Event, editor: HTMLElement | null): void {
       `Krypton detected sensitive content:\n${result.matches.slice(0, 5).map((match) => match.ruleName).join('\n')}\n\nSubmit anyway?`,
     );
     confirmationOpen = false;
-    if (proceed) return;
+    if (proceed) {
+      approvedWarning = { prompt, expiresAt: Date.now() + 2_000 };
+      reportSubmission(result, prompt, 'allow');
+      return;
+    }
   }
 
   cancel(event);
+  reportSubmission(result, prompt, 'block');
   const ruleNames = Array.from(new Set(result.matches.map((match) => match.ruleName))).slice(0, 5);
   showBanner(ruleNames);
-  chrome.runtime.sendMessage({
-    type: 'BLOCKED_EVENT',
-    event: {
-      hostname: location.hostname,
-      riskLevel: result.highestRisk,
-      actionTaken: result.action,
-      ruleCode: result.matches[0]?.ruleCode,
-      ruleName: result.matches[0]?.ruleName,
-      category: result.matches[0]?.category,
-      explanation: result.matches[0]?.explanation,
-    },
-  });
 }
 
 document.addEventListener('submit', (event) => {

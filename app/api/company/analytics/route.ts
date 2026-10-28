@@ -20,7 +20,11 @@ export async function GET(req: NextRequest) {
     await connectDB();
     const companyId = new mongoose.Types.ObjectId(tenant.companyId);
 
-    const [riskStats, actionStats, categoryStats, recentIncidents] = await Promise.all([
+    const trendStart = new Date();
+    trendStart.setUTCHours(0, 0, 0, 0);
+    trendStart.setUTCDate(trendStart.getUTCDate() - 6);
+
+    const [riskStats, actionStats, categoryStats, recentIncidents, eventTrend] = await Promise.all([
       SecurityEvent.aggregate([
         { $match: { companyId } },
         { $group: { _id: '$riskLevel', count: { $sum: 1 } } },
@@ -34,6 +38,19 @@ export async function GET(req: NextRequest) {
         { $group: { _id: '$category', count: { $sum: 1 } } },
       ]),
       SecurityEvent.find({ companyId }).sort({ timestamp: -1 }).limit(5),
+      SecurityEvent.aggregate([
+        { $match: { companyId, timestamp: { $gte: trendStart } } },
+        {
+          $group: {
+            _id: {
+              day: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp', timezone: 'UTC' } },
+              action: '$actionTaken',
+            },
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { '_id.day': 1 } },
+      ]),
     ]);
 
     const riskCounts = { LOW: 0, MEDIUM: 0, HIGH: 0, CRITICAL: 0 };
@@ -51,6 +68,11 @@ export async function GET(req: NextRequest) {
       actionCounts,
       categoryBreakdown: categoryStats.map((c) => ({ category: c._id, count: c.count })),
       recentIncidents,
+      eventTrend: eventTrend.map((entry) => ({
+        day: entry._id.day,
+        action: entry._id.action,
+        count: entry.count,
+      })),
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

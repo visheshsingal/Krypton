@@ -4,6 +4,7 @@ import { connectDB } from '@/lib/db';
 import { validateExtensionEntitlement, sha256 } from '@/lib/extension-licensing';
 import { BrowserExtensionSession } from '@/models/BrowserExtensionSession';
 import { Device } from '@/models/Device';
+import { logAuditEvent } from '@/lib/audit';
 import { SecurityPolicy } from '@/models/SecurityPolicy';
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -68,8 +69,8 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const auth = await authenticateRequest(req);
-    if (auth.error || !auth.user?.companyId || auth.user.role === 'super_admin') {
-      return NextResponse.json({ error: auth.error || 'Company account required.' }, { status: auth.status || 403 });
+    if (auth.error || !auth.user?.companyId || auth.user.role !== 'company_admin') {
+      return NextResponse.json({ error: auth.error || 'Company administrator access required.' }, { status: auth.status || 403 });
     }
 
     await connectDB();
@@ -82,17 +83,105 @@ export async function DELETE(req: NextRequest) {
     if (!deviceId || deviceId.length > 200) {
       return NextResponse.json({ error: 'Valid device ID is required.' }, { status: 400 });
     }
+    if (body.action !== 'admin_disable') {
+      return NextResponse.json({ error: 'An explicit administrator disable action is required.' }, { status: 403 });
+    }
+
+    const now = new Date();
+    const sessions = await BrowserExtensionSession.find({
+      companyId: auth.user.companyId,
+      desktopDeviceId: deviceId,
+      browserInstallationId: { $type: 'string' },
+      adminRevoked: { $ne: true },
+    }).select('browserInstallationId browser');
+    if (sessions.length === 0) {
+      return NextResponse.json({ error: 'No active browser extension is registered for this device.' }, { status: 404 });
+    }
 
     await BrowserExtensionSession.updateMany(
-      { companyId: auth.user.companyId, userId: auth.user.id, desktopDeviceId: deviceId, status: { $in: ['pending', 'active'] } },
       {
-        $set: { status: 'revoked', revokedAt: new Date() },
-        $unset: { sessionTokenHash: 1, pairingCodeHash: 1, browserInstallationId: 1 },
+        companyId: auth.user.companyId,
+        desktopDeviceId: deviceId,
+        browserInstallationId: { $type: 'string' },
+      },
+      {
+        $set: { status: 'revoked', revokedAt: now, adminRevoked: true },
+        $unset: { sessionTokenHash: 1, pairingCodeHash: 1, pairingExpiresAt: 1 },
       }
     );
-    return NextResponse.json({ revoked: true });
+    await Device.updateMany(
+      {
+        companyId: auth.user.companyId,
+        deviceId,
+        platform: 'macos-browser-extension',
+        status: 'active',
+      },
+      { $set: { status: 'revoked', revokedAt: now } }
+    );
+    await logAuditEvent({
+      companyId: auth.user.companyId,
+      actorId: auth.user.id,
+      actorEmail: auth.user.email,
+      actorRole: auth.user.role,
+      action: 'BROWSER_EXTENSION_REVOKED',
+      entityType: 'BrowserExtension',
+      entityId: deviceId,
+      details: { affectedSessions: sessions.length },
+      req,
+    });
+    return NextResponse.json({ revoked: true, affectedSessions: sessions.length });
   } catch (error) {
     console.error('[ExtensionSession] Could not revoke extension session:', error);
     return NextResponse.json({ error: 'Could not disconnect the browser extension.' }, { status: 500 });
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const auth = await authenticateRequest(req);
+    if (auth.error || !auth.user?.companyId || auth.user.role !== 'company_admin') {
+      return NextResponse.json({ error: auth.error || 'Company administrator access required.' }, { status: auth.status || 403 });
+    }
+    await connectDB();
+    const value: unknown = await req.json().catch(() => null);
+    const deviceId = value && typeof value === 'object' && !Array.isArray(value) &&
+      typeof (value as Record<string, unknown>).deviceId === 'string'
+      ? ((value as Record<string, unknown>).deviceId as string).trim()
+      : '';
+    if (!deviceId || deviceId.length > 200) {
+      return NextResponse.json({ error: 'Valid device ID is required.' }, { status: 400 });
+    }
+
+    const result = await BrowserExtensionSession.updateMany(
+      { companyId: auth.user.companyId, desktopDeviceId: deviceId, adminRevoked: true },
+      { $set: { adminRevoked: false } }
+    );
+    if (result.modifiedCount === 0) {
+      return NextResponse.json({ error: 'No administrator-disabled extension was found for this device.' }, { status: 404 });
+    }
+    await Device.updateMany(
+      {
+        companyId: auth.user.companyId,
+        deviceId,
+        platform: 'macos-browser-extension',
+        status: 'revoked',
+      },
+      { $set: { status: 'active' }, $unset: { revokedAt: 1 } }
+    );
+    await logAuditEvent({
+      companyId: auth.user.companyId,
+      actorId: auth.user.id,
+      actorEmail: auth.user.email,
+      actorRole: auth.user.role,
+      action: 'BROWSER_EXTENSION_REAUTHORIZED',
+      entityType: 'BrowserExtension',
+      entityId: deviceId,
+      details: {},
+      req,
+    });
+    return NextResponse.json({ reauthorized: true });
+  } catch (error) {
+    console.error('[ExtensionSession] Could not reauthorize extension:', error);
+    return NextResponse.json({ error: 'Could not reauthorize the browser extension.' }, { status: 500 });
   }
 }

@@ -1,0 +1,20 @@
+{
+  "available": true,
+  "releaseStatus": "built-unsigned",
+  "version": "1.0.0",
+  "architecture": "x64",
+  "packageName": "Krypton-Windows-x64-1.0.0.zip",
+  "packageDownloadUrl": "/downloads/Krypton-Windows-x64-1.0.0.zip",
+  "packageSizeBytes": 79604056,
+  "packageSha256Checksum": "a73f97a17a4ccc206e5c25d15e315b643d6e0fb41b2050e7298a363b4497bcad",
+  "installerName": "Krypton-Security-Setup-1.0.0.exe",
+  "installerType": "nsis",
+  "downloadUrl": "/downloads/Krypton-Windows-x64-1.0.0.zip",
+  "fileSizeBytes": 79604056,
+  "sha256Checksum": "a73f97a17a4ccc206e5c25d15e315b643d6e0fb41b2050e7298a363b4497bcad",
+  "installerSizeBytes": 79872709,
+  "installerSha256Checksum": "25a3673133c764a28199c25f00619d80f76922a02ccccc04dc77e482f2755799",
+  "signatureStatus": "unsigned",
+  "installationScope": "per-user",
+  "protectionScope": "Krypton-managed Chrome/Edge profile only; ordinary browser profiles and other apps are not protected."
+}

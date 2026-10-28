@@ -7,6 +7,7 @@ import os from 'os';
 import { spawn } from 'node:child_process';
 import extractZip from 'extract-zip';
 import { DesktopStore } from './store';
+import { enumerateRemovableUsbVolumes, UsbActivityEvent, UsbDlpMonitor } from './usb-dlp-monitor';
 import { PromptSecurityEngine } from '../engine/scanner';
 import { SecurityPolicyDTO } from '@krypton/shared';
 import {
@@ -25,6 +26,10 @@ import {
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 const store = new DesktopStore();
 const securityEngine = new PromptSecurityEngine();
+const usbDlpMonitor = new UsbDlpMonitor({
+  enumerateVolumes: enumerateRemovableUsbVolumes,
+  onEvent: reportDesktopUsbEvent,
+});
 
 // Load cached policy if available
 const cachedPolicy = store.get('policy');
@@ -242,9 +247,11 @@ app.whenReady().then(() => {
   createWindow();
 
   // Schedule periodic heartbeat check every 30 minutes
-  if (store.get('token')) void performBackgroundHeartbeat();
+  if (store.get('token')) {
+    void performBackgroundHeartbeat().then(resumeUsbMonitoringIfConsented);
+  }
   setInterval(() => {
-    performBackgroundHeartbeat();
+    void performBackgroundHeartbeat().then(resumeUsbMonitoringIfConsented);
   }, 30 * 60 * 1000);
 
   app.on('activate', () => {
@@ -262,7 +269,7 @@ app.on('before-quit', (event) => {
   if (shuttingDown) return;
   event.preventDefault();
   shuttingDown = true;
-  void closeManagedBrowserSessions().finally(() => app.quit());
+  void Promise.all([closeManagedBrowserSessions(), usbDlpMonitor.stop()]).finally(() => app.quit());
 });
 
 function setupIpcHandlers() {
@@ -439,6 +446,11 @@ function setupIpcHandlers() {
   });
 
   ipcMain.handle('desktop:get-website-protection-availability', () => getProtectionAvailability());
+  ipcMain.handle('desktop:get-usb-monitor-status', () => usbDlpMonitor.getStatus());
+  ipcMain.handle('desktop:set-usb-monitoring', async (_event, enabled: unknown) => {
+    if (typeof enabled !== 'boolean') return { success: false, error: 'Monitoring choice must be enabled or disabled.' };
+    return setUsbMonitoringEnabled(enabled);
+  });
   ipcMain.handle('desktop:open-protected-browser', (_event, browser: unknown, site: unknown) =>
     openProtectedBrowser(browser, site)
   );
@@ -539,6 +551,24 @@ function setupIpcHandlers() {
   ipcMain.handle('desktop:logout', async () => {
     const token = store.get('token');
     const deviceId = store.get('deviceId');
+    await usbDlpMonitor.stop();
+    store.set('usbMonitoringEnabled', false);
+    let usbConsentRevoked = !token || !deviceId;
+    if (token && deviceId) {
+      try {
+        const response = await fetch(`${getBackendUrl()}/desktop/usb-monitoring`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ deviceId, enabled: false }),
+        });
+        usbConsentRevoked = response.ok;
+      } catch (error) {
+        console.warn('[USBMonitoring] Could not revoke server consent during logout:', error);
+      }
+    }
     let extensionRevoked = !token || !deviceId;
     if (token && deviceId) {
       try {
@@ -559,9 +589,112 @@ function setupIpcHandlers() {
     await closeManagedBrowserSessions();
     return {
       success: true,
-      warning: extensionRevoked ? undefined : 'Browser protection could not be revoked while offline. Reconnect Krypton Desktop to revoke it.',
+      warning: [
+        extensionRevoked ? null : 'Browser protection remains registered; a company administrator can revoke it from the Devices dashboard.',
+        usbConsentRevoked ? null : 'USB monitoring stopped on this computer, but server consent could not be updated while offline.',
+      ].filter(Boolean).join(' ') || undefined,
     };
   });
+}
+
+async function setUsbMonitoringEnabled(enabled: boolean) {
+  const token = store.get('token');
+  const deviceId = store.get('deviceId');
+  if (!token || !deviceId) return { success: false, error: 'Activate Krypton before changing USB monitoring.' };
+
+  if (!enabled) {
+    await usbDlpMonitor.stop();
+    store.set('usbMonitoringEnabled', false);
+    try {
+      const response = await fetch(`${getBackendUrl()}/desktop/usb-monitoring`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ deviceId, enabled: false }),
+      });
+      if (!response.ok) {
+        const data = await response.json() as { error?: string };
+        return { success: false, status: usbDlpMonitor.getStatus(), error: data.error || 'Monitoring stopped locally, but server consent could not be updated.' };
+      }
+      return { success: true, status: usbDlpMonitor.getStatus() };
+    } catch (error) {
+      return {
+        success: false,
+        status: usbDlpMonitor.getStatus(),
+        error: `Monitoring stopped locally, but server consent could not be updated: ${error instanceof Error ? error.message : 'network error'}`,
+      };
+    }
+  }
+
+  if (process.platform !== 'win32') {
+    return { success: false, error: 'USB storage monitoring is currently supported on Windows only.' };
+  }
+  const heartbeat = await performBackgroundHeartbeat();
+  if (!heartbeat.valid || heartbeat.offline) {
+    return { success: false, error: 'Connect to Krypton and validate an active license before enabling USB monitoring.' };
+  }
+
+  try {
+    const consentResponse = await fetch(`${getBackendUrl()}/desktop/usb-monitoring`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ deviceId, enabled: true }),
+    });
+    const consentData = await consentResponse.json() as { error?: string };
+    if (!consentResponse.ok) throw new Error(consentData.error || 'The server did not accept monitoring consent.');
+    store.set('usbMonitoringEnabled', true);
+    const status = await usbDlpMonitor.setEnabled(true);
+    if (status.error) throw new Error(status.error);
+    return { success: true, status };
+  } catch (error) {
+    await usbDlpMonitor.stop();
+    store.set('usbMonitoringEnabled', false);
+    try {
+      await fetch(`${getBackendUrl()}/desktop/usb-monitoring`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ deviceId, enabled: false }),
+      });
+    } catch (revokeError) {
+      console.error('[USBMonitoring] Could not revoke consent after monitor startup failed:', revokeError);
+    }
+    return { success: false, error: error instanceof Error ? error.message : 'Could not start USB monitoring.' };
+  }
+}
+
+async function resumeUsbMonitoringIfConsented(heartbeat?: { valid: boolean; offline?: boolean }): Promise<void> {
+  if (!store.get('usbMonitoringEnabled') || process.platform !== 'win32') return;
+  if (usbDlpMonitor.getStatus().enabled) return;
+  const validation = heartbeat || await performBackgroundHeartbeat();
+  if (!validation.valid || validation.offline) {
+    console.warn('[USBMonitoring] Monitoring remains off until the device can validate online.');
+    if (store.get('usbMonitoringEnabled')) {
+      usbDlpMonitor.setUnavailable('Monitoring is paused until Krypton can validate online; USB events are not queued while offline.');
+    }
+    return;
+  }
+  try {
+    const status = await usbDlpMonitor.setEnabled(true);
+    if (status.error) console.error('[USBMonitoring] Could not resume monitoring:', status.error);
+  } catch (error) {
+    console.error('[USBMonitoring] Could not resume monitoring:', error);
+  }
+}
+
+async function reportDesktopUsbEvent(event: UsbActivityEvent): Promise<void> {
+  const token = store.get('token');
+  const deviceId = store.get('deviceId');
+  if (!token || !deviceId || !store.get('usbMonitoringEnabled')) {
+    throw new Error('USB activity was not uploaded because the authenticated monitoring session is unavailable.');
+  }
+  const response = await fetch(`${getBackendUrl()}/desktop/usb-events`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ ...event, deviceId }),
+  });
+  if (!response.ok) {
+    const result = await response.json() as { error?: string };
+    throw new Error(result.error || `USB activity upload failed with status ${response.status}.`);
+  }
 }
 
 function reportBrowserBlock(
@@ -654,12 +787,18 @@ async function performBackgroundHeartbeat() {
     } else {
       console.warn('[DesktopHeartbeat] Heartbeat validation failed:', data);
       await closeManagedBrowserSessions();
+      await usbDlpMonitor.stop();
+      store.set('usbMonitoringEnabled', false);
       return { valid: false, error: data.message || 'Validation failed' };
     }
   } catch (err: any) {
     console.warn('[DesktopHeartbeat] Heartbeat network check failed, entering offline grace window:', err.message);
     const protectionAvailable = getProtectionAvailability().available;
     if (!protectionAvailable) await closeManagedBrowserSessions();
+    if (usbDlpMonitor.getStatus().enabled) {
+      await usbDlpMonitor.stop();
+      usbDlpMonitor.setUnavailable('Monitoring is paused because the API is unreachable; USB events are not queued while offline.');
+    }
     return { valid: protectionAvailable, offline: true, error: err.message };
   }
 }

@@ -7,6 +7,8 @@ describe('managed browser request inspection', () => {
     expect(isAiPromptRequestUrl('https://api.openai.com/v1/responses', 'POST')).toBe(true);
     expect(isAiPromptRequestUrl('https://claude.ai/api/chat/completion', 'POST')).toBe(true);
     expect(isAiPromptRequestUrl('https://generativelanguage.googleapis.com/v1beta/models/gemini:generateContent', 'POST')).toBe(true);
+    expect(isAiPromptRequestUrl('https://copilot.microsoft.com/c/api/conversations', 'POST')).toBe(true);
+    expect(isAiPromptRequestUrl('https://www.perplexity.ai/rest/sse/perplexity_ask', 'POST')).toBe(true);
     expect(isAiPromptRequestUrl('https://example.com/v1/chat/completions', 'POST')).toBe(false);
     expect(isAiPromptRequestUrl('https://gmail.googleapis.com/gmail/v1/users/me/messages', 'POST')).toBe(false);
     expect(isAiPromptRequestUrl('http://chatgpt.com/backend-api/conversation', 'POST')).toBe(false);
@@ -31,6 +33,23 @@ describe('managed browser request inspection', () => {
       messages: [{
         content: 'Please review this key: sk-proj-abc1234567890def1234567890ghij',
       }],
+    });
+    const scan = new PromptSecurityEngine().scan(extractRequestText(body));
+    expect(scan.action).toBe('block');
+    expect(scan.highestRisk).toBe('CRITICAL');
+    expect(scan.redactedPrompt).not.toContain('sk-proj-abc1234567890def1234567890ghij');
+  });
+
+  test.each([
+    ['ChatGPT', 'https://chatgpt.com/backend-api/conversation'],
+    ['Copilot', 'https://copilot.microsoft.com/c/api/conversations'],
+    ['Claude', 'https://claude.ai/api/chat/completion'],
+    ['Gemini', 'https://generativelanguage.googleapis.com/v1beta/models/gemini:generateContent'],
+    ['Perplexity', 'https://www.perplexity.ai/rest/sse/perplexity_ask'],
+  ])('scans a secret-bearing %s request locally before allowing transmission', (_provider, url) => {
+    expect(isAiPromptRequestUrl(url, 'POST')).toBe(true);
+    const body = JSON.stringify({
+      message: 'Test credential: sk-proj-abc1234567890def1234567890ghij',
     });
     const scan = new PromptSecurityEngine().scan(extractRequestText(body));
     expect(scan.action).toBe('block');

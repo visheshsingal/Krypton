@@ -67,6 +67,7 @@ const PROMPT_PATH_PARTS = [
   'query',
   'stream',
   'assistant',
+  'perplexity_ask',
 ];
 
 export function isAiPromptRequestUrl(rawUrl: string, method: string): boolean {
