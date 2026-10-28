@@ -8,6 +8,8 @@ const extensionRoot = path.join(desktopRoot, 'extension');
 const stageDir = path.join(extensionRoot, '.build');
 const downloadsDir = path.resolve(desktopRoot, '../public/downloads');
 const zipPath = path.join(downloadsDir, 'krypton-browser-extension.zip');
+const localBuild = process.argv.includes('--local');
+const localOutputDir = path.join(extensionRoot, '.local-build');
 
 async function buildExtension() {
   const { ZipArchive } = await import('archiver');
@@ -18,9 +20,26 @@ async function buildExtension() {
 
   fs.rmSync(stageDir, { recursive: true, force: true });
   fs.mkdirSync(stageDir, { recursive: true });
-  fs.mkdirSync(downloadsDir, { recursive: true });
-  fs.copyFileSync(path.join(extensionRoot, 'manifest.json'), path.join(stageDir, 'manifest.json'));
-  fs.copyFileSync(path.join(extensionRoot, 'background.js'), path.join(stageDir, 'background.js'));
+  const stagedManifest = localBuild
+    ? {
+        ...manifest,
+        host_permissions: ['http://localhost:3000/*', 'http://127.0.0.1:3000/*'],
+      }
+    : manifest;
+  fs.writeFileSync(
+    path.join(stageDir, 'manifest.json'),
+    `${JSON.stringify(stagedManifest, null, 2)}\n`,
+  );
+  const background = fs.readFileSync(path.join(extensionRoot, 'background.js'), 'utf8');
+  fs.writeFileSync(
+    path.join(stageDir, 'background.js'),
+    localBuild
+      ? background.replace(
+          "const API_BASE = 'https://krypton-ten-theta.vercel.app/api/desktop/extension';",
+          "const API_BASE = 'http://localhost:3000/api/desktop/extension';",
+        )
+      : background,
+  );
   fs.copyFileSync(path.join(extensionRoot, 'popup.html'), path.join(stageDir, 'popup.html'));
   fs.copyFileSync(path.join(extensionRoot, 'popup.js'), path.join(stageDir, 'popup.js'));
 
@@ -35,6 +54,19 @@ async function buildExtension() {
     platform: 'browser',
   });
 
+  if (localBuild) {
+    if (!fs.readFileSync(path.join(stageDir, 'background.js'), 'utf8').includes(
+      "const API_BASE = 'http://localhost:3000/api/desktop/extension';",
+    )) {
+      throw new Error('Could not configure the local extension API URL.');
+    }
+    fs.rmSync(localOutputDir, { recursive: true, force: true });
+    fs.renameSync(stageDir, localOutputDir);
+    console.log(`Created the local unpacked extension: ${localOutputDir}`);
+    return;
+  }
+
+  fs.mkdirSync(downloadsDir, { recursive: true });
   await new Promise((resolve, reject) => {
     const output = fs.createWriteStream(zipPath);
     const archive = new ZipArchive({ zlib: { level: 9 } });

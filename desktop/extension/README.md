@@ -25,6 +25,10 @@ In the Krypton Desktop app, choose Chrome or Edge and click **Prepare extension 
 
 This free sideload method requires Developer mode and a one-time manual folder selection; browsers do not provide a supported API for a desktop app to approve or register an unpacked extension silently in a user's existing profile. It is not a consumer-friendly Chrome Web Store installation.
 
+### Local Mac testing
+
+From the repository root, run `npm --prefix desktop run build:extension:local`. This creates an unpacked development build in `desktop/extension/.local-build` that only connects to `http://localhost:3000`; it does not change the customer ZIP or its release metadata. Start the local Next.js app with `npm run dev`, then in Chrome or Edge open the extensions page, enable Developer mode, choose **Load unpacked**, and select that folder. Sign in through the extension popup using a test company license and account. The local API still requires a working local `.env`/database configuration. Remove the local extension from the browser when finished.
+
 ## Detection and privacy boundaries
 
 - The extension injects only on the supported ChatGPT, Claude, Gemini, Copilot/Bing, and Perplexity host patterns in `manifest.json`.

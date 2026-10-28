@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Krypton AI Security",
   "description": "Locally detects sensitive data in AI prompts for authorized Krypton users.",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "minimum_chrome_version": "116",
   "permissions": ["storage", "alarms"],
   "host_permissions": ["https://krypton-ten-theta.vercel.app/*"],

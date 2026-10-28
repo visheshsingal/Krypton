@@ -15,6 +15,7 @@ dist/
 desktop/dist-electron/
 desktop/dist/
 desktop/release/
+desktop/extension/.local-build/
 build/
 
 # Installer files

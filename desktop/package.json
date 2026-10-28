@@ -8,6 +8,7 @@
     "dev:electron": "tsc -p tsconfig.electron.json && electron .",
     "build": "vite build && tsc -p tsconfig.electron.json",
     "build:extension": "node scripts/build-browser-extension.cjs",
+    "build:extension:local": "node scripts/build-browser-extension.cjs --local",
     "build:win": "node scripts/build-win-release.cjs",
     "build:mac": "node scripts/build-mac-release.cjs",
     "test": "jest"

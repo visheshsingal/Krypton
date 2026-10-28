@@ -7,7 +7,8 @@ const disconnectButton = document.getElementById('disconnect-button');
 const passwordInput = document.getElementById('account-password');
 const showPassword = document.getElementById('show-password');
 const status = document.getElementById('protection-status');
-const isMacBrowser = /Macintosh|Mac OS X/.test(navigator.userAgent);
+const browserPlatform = navigator.userAgentData?.platform || navigator.platform || navigator.userAgent;
+const isMacBrowser = /mac/i.test(browserPlatform) || /Macintosh|Mac OS X/i.test(navigator.userAgent);
 
 function showState(state) {
   status.className = state.authorized ? 'active' : '';
