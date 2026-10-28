@@ -79,8 +79,8 @@ export default function HomePage() {
               </span>
             </h1>
             <p className="mx-auto mt-6 max-w-2xl text-base leading-7 text-slate-400 sm:text-lg">
-              Krypton scans AI submissions in its managed Chrome/Edge profile.
-              Normal browser profiles and system-wide website filtering are not covered.
+              Krypton scans supported AI prompts locally in Chrome and Edge using its shared browser extension.
+              A Krypton Desktop account is required to activate protection.
             </p>
             <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row sm:flex-wrap">
               {showWindowsDownload ? (
@@ -118,17 +118,19 @@ export default function HomePage() {
                   </a>
                 </>
               ) : (
-                <>
-                  <span className="inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-6 py-3.5 text-sm font-semibold text-slate-500">
-                    <Download className="h-4 w-4" />
-                    macOS Apple silicon (coming soon)
-                  </span>
-                  <span className="inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-6 py-3.5 text-sm font-semibold text-slate-500">
-                    <Download className="h-4 w-4" />
-                    macOS Intel (coming soon)
-                  </span>
-                </>
+                <span className="inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-6 py-3.5 text-sm font-semibold text-slate-500" title="The signed macOS desktop installer has not been released.">
+                  <Download className="h-4 w-4" />
+                  macOS Desktop DMG not released
+                </span>
               )}
+              <a
+                href="/downloads/krypton-browser-extension.zip"
+                download
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-sky-300/30 bg-sky-400/[0.08] px-6 py-3.5 text-sm font-semibold text-sky-100 transition hover:border-sky-300/60 hover:bg-sky-400/[0.14]"
+              >
+                <Download className="h-4 w-4" />
+                Download Chrome/Edge extension (.zip)
+              </a>
               <a
                 href="#how-it-works"
                 className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900/70 px-6 py-3.5 text-sm font-medium text-slate-200 transition hover:border-sky-400/40 hover:bg-slate-800"
@@ -138,7 +140,7 @@ export default function HomePage() {
               </a>
             </div>
             <p className="mt-4 text-xs text-slate-500">
-              Windows 10/11 x64 · macOS downloads pending signed release
+              Browser extension ZIP is available now · macOS Desktop installer is not released
             </p>
           </div>
 
@@ -292,14 +294,13 @@ export default function HomePage() {
           <div>
             <div className="flex items-center gap-2 text-xs font-medium text-sky-300">
               <Laptop className="h-4 w-4" />
-              KRYPTON DESKTOP · WINDOWS + MACOS
+              KRYPTON DESKTOP + CHROME/EDGE EXTENSION
             </div>
             <h2 className="mt-3 text-2xl font-semibold text-white sm:text-3xl">
               Ready to try Krypton?
             </h2>
             <p className="mt-3 max-w-xl text-sm leading-6 text-slate-400">
-              Download the desktop installer. To activate it, ask your company
-              administrator for your account and license key.
+              Download the available package below. Browser extension activation requires signing in to Krypton Desktop first.
             </p>
           </div>
           <div className="flex w-full shrink-0 flex-col gap-3 sm:w-auto sm:flex-row">
@@ -338,25 +339,27 @@ export default function HomePage() {
                 </a>
               </>
             ) : (
-              <>
-                <span className="inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-5 py-3 text-sm font-semibold text-slate-500">
-                  <Download className="h-4 w-4" />
-                  macOS Apple silicon (coming soon)
-                </span>
-                <span className="inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-5 py-3 text-sm font-semibold text-slate-500">
-                  <Download className="h-4 w-4" />
-                  macOS Intel (coming soon)
-                </span>
-              </>
+              <span className="inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-5 py-3 text-sm font-semibold text-slate-500">
+                <Download className="h-4 w-4" />
+                macOS Desktop DMG not released
+              </span>
             )}
+            <a
+              href="/downloads/krypton-browser-extension.zip"
+              download
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-sky-300/30 bg-sky-400/[0.08] px-5 py-3 text-sm font-semibold text-sky-100 transition hover:bg-sky-400/[0.14]"
+            >
+              <Download className="h-4 w-4" />
+              Browser extension ZIP
+            </a>
           </div>
         </div>
         <div className="mx-auto mt-8 flex max-w-6xl flex-col justify-between gap-3 text-xs text-slate-500 sm:flex-row">
-          <span>Windows x64 · macOS builds pending Apple signing · Desktop use requires a valid company license</span>
+          <span>Extension ZIP downloads now · macOS Desktop installer is not available · activation requires a valid company license</span>
           <span>Download not starting? Check your browser&apos;s download settings.</span>
         </div>
         <p className="mx-auto mt-4 max-w-6xl text-xs leading-5 text-slate-500">
-          macOS downloads will return when both Apple silicon and Intel DMGs are signed, notarized, and verified for Gatekeeper. We will not ask users to bypass macOS security.
+          The extension ZIP is for Chrome/Edge developer or managed installation. It is not a macOS desktop DMG; that installer is not currently built and signed.
         </p>
       </section>
     </div>

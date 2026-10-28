@@ -16,6 +16,13 @@ export interface KryptonDesktopBridge {
     expiresAt?: string;
     error?: string;
   }>;
+  downloadBrowserExtension: (browser: 'chrome' | 'edge') => Promise<{
+    success: boolean;
+    extensionDirectory?: string;
+    browserSettingsError?: string;
+    error?: string;
+  }>;
+  copyText: (value: string) => Promise<{ success: boolean }>;
   getExtensionStatus: () => Promise<Record<string, unknown>>;
   activate: (data: { licenseKey: string; email: string; password: string }) => Promise<any>;
   heartbeat: () => Promise<any>;
@@ -32,6 +39,8 @@ const bridge: KryptonDesktopBridge = {
   getWebsiteProtectionAvailability: () => ipcRenderer.invoke('desktop:get-website-protection-availability'),
   openProtectedBrowser: (browser, site) => ipcRenderer.invoke('desktop:open-protected-browser', browser, site),
   createExtensionPairing: (browser) => ipcRenderer.invoke('desktop:create-extension-pairing', browser),
+  downloadBrowserExtension: (browser) => ipcRenderer.invoke('desktop:download-browser-extension', browser),
+  copyText: (value) => ipcRenderer.invoke('desktop:copy-text', value),
   getExtensionStatus: () => ipcRenderer.invoke('desktop:get-extension-status'),
   activate: (data) => ipcRenderer.invoke('desktop:activate', data),
   heartbeat: () => ipcRenderer.invoke('desktop:heartbeat'),

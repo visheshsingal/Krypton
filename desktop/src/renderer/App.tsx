@@ -34,6 +34,13 @@ type KryptonDesktopBridge = {
     expiresAt?: string;
     error?: string;
   }>;
+  downloadBrowserExtension: (browser: 'chrome' | 'edge') => Promise<{
+    success: boolean;
+    extensionDirectory?: string;
+    browserSettingsError?: string;
+    error?: string;
+  }>;
+  copyText: (value: string) => Promise<{ success: boolean }>;
   getExtensionStatus: () => Promise<BrowserExtensionStatus>;
   activate: (data: { licenseKey: string; email: string; password: string }) => Promise<ActivationResult>;
   logout: () => Promise<{ success: boolean; warning?: string }>;
@@ -59,6 +66,9 @@ export default function App() {
   const [pairingExpiresAt, setPairingExpiresAt] = useState<string | null>(null);
   const [pairingLoading, setPairingLoading] = useState(false);
   const [extensionError, setExtensionError] = useState<string | null>(null);
+  const [extensionDownloadLoading, setExtensionDownloadLoading] = useState(false);
+  const [extensionDownloadMessage, setExtensionDownloadMessage] = useState<string | null>(null);
+  const [extensionDirectory, setExtensionDirectory] = useState<string | null>(null);
 
   useEffect(() => {
     if (!desktopBridge) {
@@ -165,6 +175,30 @@ export default function App() {
       if (!result.success || !result.pairingCode || !result.expiresAt) {
         setExtensionError(result.error || 'Could not create an activation code.');
         return;
+      }
+
+      async function handleDownloadExtension() {
+        if (!desktopBridge) return;
+        setExtensionDownloadLoading(true);
+        setExtensionDownloadMessage(null);
+        setExtensionError(null);
+        try {
+          const result = await desktopBridge.downloadBrowserExtension(selectedBrowser);
+          if (!result.success) {
+            setExtensionError(result.error || 'Could not download the extension package.');
+            return;
+          }
+          setExtensionDirectory(result.extensionDirectory || null);
+          setExtensionDownloadMessage(
+            result.browserSettingsError
+              ? `Extension extracted, but could not open browser settings: ${result.browserSettingsError}`
+              : `Extension extracted. ${selectedBrowser === 'chrome' ? 'Chrome' : 'Edge'} extensions page opened.`,
+          );
+        } catch (error) {
+          setExtensionError(error instanceof Error ? error.message : 'Could not download the extension package.');
+        } finally {
+          setExtensionDownloadLoading(false);
+        }
       }
       setPairingCode(result.pairingCode);
       setPairingExpiresAt(result.expiresAt);
@@ -387,17 +421,34 @@ export default function App() {
 
             <button
               type="button"
-              onClick={() => void desktopBridge.openExternal('https://krypton-ten-theta.vercel.app/downloads/krypton-browser-extension.zip')}
-              className="w-full rounded-lg border border-sky-300/20 bg-sky-400/10 px-4 py-2.5 text-sm font-semibold text-sky-100 transition-colors hover:bg-sky-400/20"
+              onClick={() => void handleDownloadExtension()}
+              disabled={extensionDownloadLoading}
+              className="w-full rounded-lg border border-sky-300/20 bg-sky-400/10 px-4 py-2.5 text-sm font-semibold text-sky-100 transition-colors hover:bg-sky-400/20 disabled:cursor-wait disabled:opacity-50"
             >
-              Download common extension ZIP
+              {extensionDownloadLoading ? 'Preparing browser extension…' : 'Prepare extension in selected browser'}
             </button>
+            {extensionDownloadMessage && (
+              <p role="status" className="text-xs text-emerald-300">{extensionDownloadMessage}</p>
+            )}
             <ol className="list-decimal space-y-1 pl-5 text-xs leading-5 text-slate-400">
-              <li>Extract the downloaded ZIP to a folder.</li>
+              <li>Click the button; Krypton downloads, verifies, and extracts the extension automatically.</li>
               <li>Open {selectedBrowser === 'chrome' ? 'chrome://extensions' : 'edge://extensions'} and turn on Developer mode.</li>
-              <li>Choose “Load unpacked” and select the extracted folder.</li>
-              <li>Return here, generate a one-time code, then enter it in the extension popup.</li>
+              <li>Click “Load unpacked” and select the Krypton folder shown below. This browser approval is required once.</li>
+              <li>After it loads, return here, generate a one-time code, then enter it in the extension popup.</li>
             </ol>
+            {extensionDirectory && (
+              <div className="rounded-lg border border-slate-700 bg-slate-950 p-3">
+                <p className="mb-1 text-[11px] text-slate-500">Choose this folder in “Load unpacked”:</p>
+                <code className="block break-all text-xs text-sky-200">{extensionDirectory}</code>
+                <button
+                  type="button"
+                  onClick={() => void desktopBridge.copyText(extensionDirectory)}
+                  className="mt-2 text-xs font-medium text-sky-300 hover:text-sky-100"
+                >
+                  Copy folder path
+                </button>
+              </div>
+            )}
             <p className="text-[11px] leading-5 text-slate-500">
               This ZIP is for development or managed installation. Chrome Web Store publishing and its approved listing are not configured yet. The code expires after 10 minutes and can be used once.
             </p>

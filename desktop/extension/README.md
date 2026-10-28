@@ -16,15 +16,16 @@ The script bundles the desktop `PromptSecurityEngine` and built-in rules into `p
 
 Each activated employee must already hold a seat in the existing company license. Pairing is bound to that employee and their registered desktop device; the extension does not create or consume a separate license seat.
 
+In the Krypton Desktop app, choose Chrome or Edge and click **Prepare extension in browser**. Krypton downloads the common ZIP, verifies its SHA-256 checksum, extracts it into the current user's application-data folder, and opens that browser's extensions page. This requires a rebuilt Desktop installer containing the setup flow.
+
 ## Development or managed installation
 
-1. Download and extract `krypton-browser-extension.zip`.
-2. In Chrome open `chrome://extensions`; in Edge open `edge://extensions`.
-3. Enable Developer mode and select **Load unpacked**, then choose the extracted extension directory.
-4. Sign in and activate Krypton Desktop, select the same browser, and generate a one-time activation code.
-5. Open the extension popup and enter that code before it expires.
+1. Sign in and activate Krypton Desktop; select Chrome or Edge and click **Prepare extension in browser**.
+2. In the opened extensions page, enable Developer mode and select **Load unpacked**.
+3. Use **Copy folder path** in Krypton Desktop and select that folder in the browser picker. This browser approval is required once.
+4. Generate a one-time activation code in Desktop and enter it in the extension popup.
 
-The ZIP is for development/testing or managed deployment. It is not a consumer-friendly Chrome Web Store installation.
+This free sideload method requires Developer mode and a one-time manual folder selection; browsers do not provide a supported API for a desktop app to approve or register an unpacked extension silently in a user's existing profile. It is not a consumer-friendly Chrome Web Store installation.
 
 ## Detection and privacy boundaries
 
