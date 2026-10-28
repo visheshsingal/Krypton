@@ -850,6 +850,19 @@ export default function CompanyDashboard() {
                     />
                   </div>
 
+                  <div>
+                    <label className="block text-slate-300 font-semibold mb-1">Risk Level</label>
+                    <select
+                      value={newRuleRisk}
+                      onChange={(event) => setNewRuleRisk(event.target.value as 'HIGH' | 'CRITICAL' | 'MEDIUM')}
+                      className="w-full rounded-lg border border-slate-800 bg-slate-950 p-2.5 text-xs text-white focus:border-emerald-500 focus:outline-none"
+                    >
+                      <option value="MEDIUM">Medium (warn before submission)</option>
+                      <option value="HIGH">High (block)</option>
+                      <option value="CRITICAL">Critical (block)</option>
+                    </select>
+                  </div>
+
                   <div className="sm:col-span-2 flex justify-end">
                     <button
                       type="submit"

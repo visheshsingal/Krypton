@@ -96,4 +96,19 @@ describe('AI Prompt Security Engine - Local Deterministic Scanner', () => {
     expect(result.matches[0].ruleCode).toBe('CUSTOM_PROJECT_APOLLO');
     expect(result.redactedPrompt).toContain('[REDACTED: CUSTOM_PROJECT_APOLLO]');
   });
+
+  test.each([
+    ['email address', 'Contact test@example.com about the sample request.', 'PII_EMAIL'],
+    ['labeled phone number', 'Phone: +1 (202) 555-0147', 'PII_PHONE'],
+    ['labeled date of birth', 'DOB: 1990-04-15', 'PII_DATE_OF_BIRTH'],
+    ['labeled street address', 'Home address: 123 Example Street', 'PII_POSTAL_ADDRESS'],
+    ['labeled bank account number', 'Bank account: 12345678', 'PII_BANK_ACCOUNT'],
+  ])('warns for medium-risk %s instead of blocking', (_label, prompt, ruleCode) => {
+    const result = new PromptSecurityEngine().scan(prompt);
+
+    expect(result.hasRisk).toBe(true);
+    expect(result.highestRisk).toBe('MEDIUM');
+    expect(result.action).toBe('warn');
+    expect(result.matches.map((match) => match.ruleCode)).toContain(ruleCode);
+  });
 });
