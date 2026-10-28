@@ -1,10 +1,10 @@
 {
-  "available": true,
-  "releaseStatus": "built-unsigned",
+  "available": false,
+  "releaseStatus": "managed-browser-build-not-published",
   "version": "1.0.0",
   "architecture": "x64",
-  "installerName": "Krypton-Security-Setup-1.0.0.exe",
-  "downloadUrl": "/downloads/Krypton-Security-Setup-1.0.0.exe",
-  "fileSizeBytes": 79564272,
-  "sha256Checksum": "0de3db7b60b077554be7b750311ffa9d02421349757e56e496fd7bafe0d042bd"
+  "installerName": null,
+  "downloadUrl": null,
+  "fileSizeBytes": null,
+  "sha256Checksum": null
 }

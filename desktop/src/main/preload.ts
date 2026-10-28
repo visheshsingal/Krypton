@@ -3,6 +3,13 @@ import { contextBridge, ipcRenderer } from 'electron';
 export interface KryptonDesktopBridge {
   getDeviceInfo: () => Promise<any>;
   getStoredState: () => Promise<any>;
+  getWebsiteProtectionAvailability: () => Promise<{
+    available: boolean;
+    status: string;
+    platform: string;
+    scope?: string;
+  }>;
+  openProtectedBrowser: (browser: 'chrome' | 'edge', site: string) => Promise<{ success: boolean; error?: string }>;
   activate: (data: { licenseKey: string; email: string; password: string }) => Promise<any>;
   heartbeat: () => Promise<any>;
   scanPrompt: (prompt: string) => Promise<any>;
@@ -15,6 +22,8 @@ export interface KryptonDesktopBridge {
 const bridge: KryptonDesktopBridge = {
   getDeviceInfo: () => ipcRenderer.invoke('desktop:get-device-info'),
   getStoredState: () => ipcRenderer.invoke('desktop:get-stored-state'),
+  getWebsiteProtectionAvailability: () => ipcRenderer.invoke('desktop:get-website-protection-availability'),
+  openProtectedBrowser: (browser, site) => ipcRenderer.invoke('desktop:open-protected-browser', browser, site),
   activate: (data) => ipcRenderer.invoke('desktop:activate', data),
   heartbeat: () => ipcRenderer.invoke('desktop:heartbeat'),
   scanPrompt: (prompt) => ipcRenderer.invoke('desktop:scan-prompt', prompt),

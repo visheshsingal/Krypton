@@ -41,8 +41,9 @@ dmg:
 
 nsis:
   oneClick: false
-  perMachine: false
-  allowToChangeInstallationDirectory: true
+  perMachine: true
+  allowElevation: true
+  allowToChangeInstallationDirectory: false
   createDesktopShortcut: always
   createStartMenuShortcut: true
   shortcutName: Krypton AI Security

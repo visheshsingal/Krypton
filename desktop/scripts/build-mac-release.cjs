@@ -76,6 +76,12 @@ function verifyDmg(dmgPath) {
 
 function main() {
   requireReleaseCredentials();
+  const nativeDnsProxy = path.join(desktopRoot, 'native/macos/KryptonDNSProxy.appex');
+  if (!fs.existsSync(nativeDnsProxy)) {
+    throw new Error(
+      'The macOS Network Extension DNS proxy is not implemented or embedded. Refusing to publish an installer that could imply website protection is active.'
+    );
+  }
   run('npm', ['run', 'build']);
   fs.mkdirSync(releaseDir, { recursive: true });
   fs.mkdirSync(downloadsDir, { recursive: true });

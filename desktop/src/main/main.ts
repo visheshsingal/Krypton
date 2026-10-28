@@ -4,6 +4,18 @@ import os from 'os';
 import { DesktopStore } from './store';
 import { PromptSecurityEngine } from '../engine/scanner';
 import { SecurityPolicyDTO } from '@krypton/shared';
+import {
+  findManagedBrowserExecutable,
+  isManagedBrowserKind,
+  ManagedBrowserKind,
+  ManagedBrowserSession,
+} from './managed-browser';
+import {
+  createBlockedPromptEvent,
+  getOfflineProtectionState,
+  isProtectedAiSite,
+  PROTECTED_AI_SITES,
+} from './protected-browser-policy';
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 const store = new DesktopStore();
@@ -16,6 +28,9 @@ if (cachedPolicy) {
 }
 
 let mainWindow: BrowserWindow | null = null;
+const managedBrowserSessions = new Map<ManagedBrowserKind, ManagedBrowserSession>();
+const browserEventTimes = new Map<ManagedBrowserKind, number[]>();
+let shuttingDown = false;
 const productionBackendUrl = 'https://krypton-ten-theta.vercel.app/api';
 const configuredBackendUrl = process.env.KRYPTON_API_URL || (isDev ? 'http://localhost:5000/api' : productionBackendUrl);
 
@@ -70,11 +85,100 @@ function createWindow() {
   });
 }
 
+function getProtectionAvailability() {
+  const license = store.get('license');
+  const token = store.get('token');
+  const lastValidation = store.get('lastSuccessfulValidation');
+  const graceHours = store.get('offlineGraceHours') || 72;
+  const hasActiveLicense = Boolean(
+    token &&
+    license?.status === 'active' &&
+    license.expiresAt &&
+    Date.parse(license.expiresAt) > Date.now()
+  );
+  const graceState = getOfflineProtectionState(lastValidation, graceHours);
+
+  if (process.platform !== 'win32') {
+    return { available: false, status: 'windows_only', platform: process.platform, browsers: [] as ManagedBrowserKind[] };
+  }
+  if (!hasActiveLicense) {
+    return { available: false, status: 'activation_required', platform: process.platform, browsers: [] as ManagedBrowserKind[] };
+  }
+  if (graceState !== 'valid') {
+    return { available: false, status: 'license_validation_required', platform: process.platform, browsers: [] as ManagedBrowserKind[] };
+  }
+
+  const browsers = (['chrome', 'edge'] as const).filter((browser) =>
+    Boolean(findManagedBrowserExecutable(browser))
+  );
+  if (browsers.length === 0) {
+    return { available: false, status: 'browser_not_installed', platform: process.platform, browsers };
+  }
+
+  return {
+    available: true,
+    status: 'protected_browser_available',
+    platform: process.platform,
+    scope: 'krypton_managed_browser_profile_only',
+    browsers,
+  };
+}
+
+async function openProtectedBrowser(browserValue: unknown, siteValue: unknown) {
+  if (process.platform !== 'win32') {
+    return { success: false, error: 'Managed Chrome/Edge protection is currently available on Windows only.' };
+  }
+  if (!isManagedBrowserKind(browserValue)) {
+    return { success: false, error: 'Choose Google Chrome or Microsoft Edge.' };
+  }
+  if (!isProtectedAiSite(siteValue)) {
+    return { success: false, error: 'Choose a supported AI website.' };
+  }
+
+  const heartbeat = await performBackgroundHeartbeat();
+  if (!heartbeat.valid) {
+    return { success: false, error: 'Krypton could not validate this license. Reconnect and try again.' };
+  }
+
+  const availability = getProtectionAvailability();
+  if (!availability.available) {
+    return { success: false, error: 'Activate a valid license and reconnect to Krypton before using protected browsing.' };
+  }
+
+  if (!findManagedBrowserExecutable(browserValue)) {
+    return { success: false, error: `${browserValue === 'chrome' ? 'Google Chrome' : 'Microsoft Edge'} is not installed.` };
+  }
+
+  let browserSession = managedBrowserSessions.get(browserValue);
+  try {
+    if (!browserSession) {
+      browserSession = await ManagedBrowserSession.launch({
+        browser: browserValue,
+        profileRoot: path.join(app.getPath('userData'), 'protected-browser-profiles'),
+        scanner: securityEngine,
+        onBlocked: (result, hostname) => reportBrowserBlock(browserValue, result, hostname),
+      });
+      managedBrowserSessions.set(browserValue, browserSession);
+    }
+
+    await browserSession.openUrl(PROTECTED_AI_SITES[siteValue].url);
+    return { success: true };
+  } catch (error) {
+    managedBrowserSessions.delete(browserValue);
+    await browserSession?.close();
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Could not connect Krypton to the selected browser.',
+    };
+  }
+}
+
 app.whenReady().then(() => {
   setupIpcHandlers();
   createWindow();
 
   // Schedule periodic heartbeat check every 30 minutes
+  if (store.get('token')) void performBackgroundHeartbeat();
   setInterval(() => {
     performBackgroundHeartbeat();
   }, 30 * 60 * 1000);
@@ -88,6 +192,13 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
+});
+
+app.on('before-quit', (event) => {
+  if (shuttingDown) return;
+  event.preventDefault();
+  shuttingDown = true;
+  void closeManagedBrowserSessions().finally(() => app.quit());
 });
 
 function setupIpcHandlers() {
@@ -106,6 +217,11 @@ function setupIpcHandlers() {
   ipcMain.handle('desktop:get-stored-state', () => {
     return store.getAll();
   });
+
+  ipcMain.handle('desktop:get-website-protection-availability', () => getProtectionAvailability());
+  ipcMain.handle('desktop:open-protected-browser', (_event, browser: unknown, site: unknown) =>
+    openProtectedBrowser(browser, site)
+  );
 
   // Version
   ipcMain.handle('desktop:get-version', () => app.getVersion());
@@ -193,6 +309,57 @@ function setupIpcHandlers() {
 
   // Report security incident to backend
   ipcMain.handle('desktop:report-event', async (_, eventData) => {
+    return reportDesktopEvent({
+      ...eventData,
+      deviceId: store.get('deviceId'),
+    });
+  });
+
+  // Logout
+  ipcMain.handle('desktop:logout', async () => {
+    store.clearAuth();
+    await closeManagedBrowserSessions();
+    return { success: true };
+  });
+}
+
+function reportBrowserBlock(
+  browser: ManagedBrowserKind,
+  result: import('@krypton/shared').PromptScanResult,
+  hostname: string,
+): void {
+  const now = Date.now();
+  const recent = (browserEventTimes.get(browser) || [])
+    .filter((timestamp) => now - timestamp < 10 * 60 * 1000);
+  if (recent.length >= 20) return;
+  recent.push(now);
+  browserEventTimes.set(browser, recent);
+
+  const report = createBlockedPromptEvent(
+    result.action === 'block' ? result : { ...result, action: 'block' },
+    hostname,
+  );
+  if (report) {
+    void reportDesktopEvent({
+      ...report,
+      deviceId: store.get('deviceId'),
+    });
+  }
+}
+
+async function closeManagedBrowserSessions(): Promise<void> {
+  const sessions = Array.from(managedBrowserSessions.values());
+  managedBrowserSessions.clear();
+  await Promise.all(sessions.map(async (session) => {
+    try {
+      await session.close();
+    } catch (error) {
+      console.warn('[ProtectedBrowser] Could not close managed browser cleanly:', error);
+    }
+  }));
+}
+
+async function reportDesktopEvent(eventData: Record<string, unknown>) {
     try {
       const token = store.get('token');
       if (!token) return { success: false, error: 'Unauthenticated' };
@@ -203,10 +370,7 @@ function setupIpcHandlers() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          ...eventData,
-          deviceId: store.get('deviceId'),
-        }),
+        body: JSON.stringify(eventData),
       });
 
       if (!res.ok) {
@@ -218,13 +382,6 @@ function setupIpcHandlers() {
     } catch (err: any) {
       return { success: false, error: err.message };
     }
-  });
-
-  // Logout
-  ipcMain.handle('desktop:logout', () => {
-    store.clearAuth();
-    return { success: true };
-  });
 }
 
 async function performBackgroundHeartbeat() {
@@ -255,10 +412,13 @@ async function performBackgroundHeartbeat() {
       return { valid: true, ...data };
     } else {
       console.warn('[DesktopHeartbeat] Heartbeat validation failed:', data);
+      await closeManagedBrowserSessions();
       return { valid: false, error: data.message || 'Validation failed' };
     }
   } catch (err: any) {
     console.warn('[DesktopHeartbeat] Heartbeat network check failed, entering offline grace window:', err.message);
-    return { valid: true, offline: true, error: err.message };
+    const protectionAvailable = getProtectionAvailability().available;
+    if (!protectionAvailable) await closeManagedBrowserSessions();
+    return { valid: protectionAvailable, offline: true, error: err.message };
   }
 }

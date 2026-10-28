@@ -1,17 +1,21 @@
 {
   "available": false,
-  "releaseStatus": "pending-apple-signing-and-notarization",
+  "releaseStatus": "native-network-filter-not-implemented",
   "version": "1.0.0",
   "architectures": {
     "appleSilicon": {
       "architecture": "arm64",
-      "installerName": "Krypton-macOS-1.0.0-arm64.dmg",
-      "downloadUrl": "/downloads/Krypton-macOS-1.0.0-arm64.dmg"
+      "installerName": null,
+      "downloadUrl": null,
+      "fileSizeBytes": null,
+      "sha256Checksum": null
     },
     "intel": {
       "architecture": "x64",
-      "installerName": "Krypton-macOS-1.0.0-x64.dmg",
-      "downloadUrl": "/downloads/Krypton-macOS-1.0.0-x64.dmg"
+      "installerName": null,
+      "downloadUrl": null,
+      "fileSizeBytes": null,
+      "sha256Checksum": null
     }
   }
 }

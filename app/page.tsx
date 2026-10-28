@@ -89,8 +89,8 @@ export default function HomePage() {
               </span>
             </h1>
             <p className="mx-auto mt-6 max-w-2xl text-base leading-7 text-slate-400 sm:text-lg">
-              Krypton checks prompts on your computer, detects exposed secrets,
-              and helps your team use AI more safely.
+              Krypton is built for local-first security controls. System-wide
+              website blocking is unavailable until its native filter is installed.
             </p>
             <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row sm:flex-wrap">
               {showWindowsDownload ? (
@@ -198,7 +198,7 @@ export default function HomePage() {
                     {redactedPrompt || 'Your text will appear here.'}
                   </p>
                   <p className="mt-2 text-[11px] text-slate-500">
-                    This browser demo is illustrative; the desktop app performs local scanning.
+                    This browser demo is illustrative and does not indicate system-wide website protection.
                   </p>
                 </div>
               </div>
@@ -224,7 +224,7 @@ export default function HomePage() {
               {
                 icon: ScanLine,
                 title: 'Scan locally',
-                text: 'Check text in the desktop app with deterministic rules for common API keys, credentials, and sensitive patterns.',
+                text: 'The desktop app includes deterministic local rules for common API keys, credentials, and sensitive patterns.',
               },
               {
                 icon: LockKeyhole,
@@ -274,8 +274,8 @@ export default function HomePage() {
               {
                 number: '03',
                 icon: Terminal,
-                title: 'Scan before sharing',
-                text: 'Open the desktop app, activate your account, and scan text in its security sandbox.',
+                title: 'Check protection status',
+                text: 'The desktop app reports whether its operating-system network filter is installed.',
               },
             ].map(({ number, icon: Icon, title, text }) => (
               <div key={number} className="relative border-l border-sky-400/20 pl-6">

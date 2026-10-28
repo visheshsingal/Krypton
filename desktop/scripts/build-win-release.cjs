@@ -35,7 +35,11 @@ function isWindowsExecutable(filePath) {
 }
 
 function main() {
+  const managedBrowserModule = path.join(desktopRoot, 'dist-electron/main/managed-browser.js');
   run('npm', ['run', 'build']);
+  if (!fs.existsSync(managedBrowserModule)) {
+    throw new Error('Managed-browser protection was not compiled; refusing to publish an incomplete installer.');
+  }
   const mainBundle = fs.readFileSync(path.join(desktopRoot, 'dist-electron/main/main.js'), 'utf8');
   if (!mainBundle.includes('https://krypton-ten-theta.vercel.app/api')) {
     throw new Error('Production Vercel API endpoint was not embedded in the desktop app.');
@@ -73,6 +77,7 @@ function main() {
     downloadUrl: `/downloads/${installerName}`,
     fileSizeBytes: contents.length,
     sha256Checksum: crypto.createHash('sha256').update(contents).digest('hex'),
+    protectionScope: 'Krypton-managed Chrome/Edge profile only; ordinary browser profiles and other apps are not protected.',
   };
   fs.writeFileSync(
     path.join(downloadsDir, 'windows-release.json'),
