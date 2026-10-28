@@ -1,6 +1,6 @@
 # Krypton Browser Extension
 
-This is one shared Manifest V3 extension package. It does not contain customer credentials or a customer-specific license. Activation uses a single-use, ten-minute code issued by a signed-in Krypton Desktop session, then a revocable 30-day session tied to that user's registered desktop device and existing company seat.
+This is one shared Manifest V3 extension package. It does not contain customer credentials or a customer-specific license. On Windows, activation continues to use a single-use, ten-minute code issued by Krypton Desktop. On macOS, the browser popup accepts the user's company license and account credentials directly, without requiring the macOS desktop app. Both flows issue a revocable 30-day extension session and use the existing company seat, license, subscription, and device-limit checks.
 
 ## Build the common ZIP
 
@@ -14,16 +14,14 @@ npm run extension:build
 The install is a one-time step if desktop dependencies are not already installed.
 The script bundles the desktop `PromptSecurityEngine` and built-in rules into `public/downloads/krypton-browser-extension.zip`. The archive contains only the extension files and can be distributed unchanged to all customers.
 
-Each activated employee must already hold a seat in the existing company license. Pairing is bound to that employee and their registered desktop device; the extension does not create or consume a separate license seat.
+Each activated employee must already hold a seat in the existing company license. Windows pairing is bound to that employee and their registered desktop device. macOS browser activation registers that browser installation as one device under the same license, so it counts against the existing per-user device limit, but does not create a separate seat.
 
 In the Krypton Desktop app, choose Chrome or Edge and click **Prepare extension in browser**. Krypton downloads the common ZIP, verifies its SHA-256 checksum, extracts it into the current user's application-data folder, and opens that browser's extensions page. This requires a rebuilt Desktop installer containing the setup flow.
 
 ## Development or managed installation
 
-1. Sign in and activate Krypton Desktop; select Chrome or Edge and click **Prepare extension in browser**.
-2. In the opened extensions page, enable Developer mode and select **Load unpacked**.
-3. Use **Copy folder path** in Krypton Desktop and select that folder in the browser picker. This browser approval is required once.
-4. Generate a one-time activation code in Desktop and enter it in the extension popup.
+1. Install the common ZIP in Chrome or Edge using **Load unpacked** (the browser requires this one-time approval).
+2. On macOS, open the extension popup and sign in with the company license, account email, and password. On Windows, continue using Krypton Desktop to pair as before.
 
 This free sideload method requires Developer mode and a one-time manual folder selection; browsers do not provide a supported API for a desktop app to approve or register an unpacked extension silently in a user's existing profile. It is not a consumer-friendly Chrome Web Store installation.
 

@@ -53,7 +53,7 @@ async function callApi(path, token, body) {
 
 async function heartbeat() {
   const state = await getState();
-  if (!state.sessionToken) return { status: 'not_installed', authorized: false };
+  if (!state.sessionToken) return { status: 'not_installed', authorized: false, canDisconnect: false };
   try {
     const data = await callApi('session', state.sessionToken);
     await updateState({
@@ -62,11 +62,15 @@ async function heartbeat() {
       policy: data.policy || state.policy,
       lastValidatedAt: Date.now(),
     });
-    return { status: data.status, authorized: data.protectionActive === true };
+    return {
+      status: data.status,
+      authorized: data.protectionActive === true,
+      canDisconnect: true,
+    };
   } catch (error) {
     if (error.status === 401 || error.status === 403) {
       await updateState({ authorized: false, status: error.code || 'license_invalid' });
-      return { status: error.code || 'license_invalid', authorized: false };
+      return { status: error.code || 'license_invalid', authorized: false, canDisconnect: true };
     }
     const inOfflineGrace = state.lastValidatedAt > 0 &&
       Date.now() - state.lastValidatedAt <= Math.min(state.offlineGraceHours, 720) * 60 * 60 * 1000 &&
@@ -75,7 +79,11 @@ async function heartbeat() {
       authorized: inOfflineGrace && Boolean(state.policy),
       status: inOfflineGrace ? 'offline' : 'license_invalid',
     });
-    return { status: inOfflineGrace ? 'offline' : 'license_invalid', authorized: inOfflineGrace };
+    return {
+      status: inOfflineGrace ? 'offline' : 'license_invalid',
+      authorized: inOfflineGrace,
+      canDisconnect: true,
+    };
   }
 }
 
@@ -135,6 +143,68 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         status: checked.status,
         error: checked.authorized ? undefined : 'The license could not be validated after activation.',
       });
+    })().catch((error) => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
+  if (message?.type === 'ACTIVATE_BROWSER_ONLY') {
+    if (sender.url !== chrome.runtime.getURL('popup.html')) return false;
+    void (async () => {
+      const installationId = await ensureInstallationId();
+      const response = await fetch(`${API_BASE}/browser-activate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          licenseKey: message.licenseKey,
+          email: message.email,
+          password: message.password,
+          installationId,
+          browser: navigator.userAgent.includes('Edg/') ? 'edge' : 'chrome',
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Could not activate this browser.');
+
+      await chrome.storage.local.set({
+        sessionToken: data.sessionToken,
+        sessionExpiresAt: data.expiresAt,
+        offlineGraceHours: data.offlineGraceHours,
+        policy: data.policy || null,
+        authorized: true,
+        status: 'protection_active',
+        lastValidatedAt: Date.now(),
+      });
+      const checked = await heartbeat();
+      sendResponse({
+        success: checked.authorized,
+        status: checked.status,
+        error: checked.authorized ? undefined : 'The license could not be validated after activation.',
+      });
+    })().catch((error) => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
+  if (message?.type === 'DISCONNECT_BROWSER') {
+    if (sender.url !== chrome.runtime.getURL('popup.html')) return false;
+    void (async () => {
+      const state = await getState();
+      if (state.sessionToken) {
+        const response = await fetch(`${API_BASE}/browser-activate`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${state.sessionToken}` },
+        });
+        if (!response.ok) throw new Error('Could not revoke this browser session.');
+      }
+      await updateState({
+        sessionToken: '',
+        sessionExpiresAt: '',
+        offlineGraceHours: 72,
+        policy: null,
+        authorized: false,
+        status: 'not_installed',
+        lastValidatedAt: 0,
+      });
+      sendResponse({ success: true });
     })().catch((error) => sendResponse({ success: false, error: error.message }));
     return true;
   }

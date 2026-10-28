@@ -80,7 +80,7 @@ export default function HomePage() {
             </h1>
             <p className="mx-auto mt-6 max-w-2xl text-base leading-7 text-slate-400 sm:text-lg">
               Krypton scans supported AI prompts locally in Chrome and Edge using its shared browser extension.
-              A Krypton Desktop account is required to activate protection.
+              On Mac, activate directly in the browser; Windows activation stays connected to Krypton Desktop.
             </p>
             <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row sm:flex-wrap">
               {showWindowsDownload ? (

@@ -3,6 +3,7 @@ import { authenticateRequest } from '@/lib/auth';
 import { connectDB } from '@/lib/db';
 import { validateExtensionEntitlement, sha256 } from '@/lib/extension-licensing';
 import { BrowserExtensionSession } from '@/models/BrowserExtensionSession';
+import { Device } from '@/models/Device';
 import { SecurityPolicy } from '@/models/SecurityPolicy';
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -41,6 +42,15 @@ export async function POST(req: NextRequest) {
 
     session.lastHeartbeatAt = new Date();
     await session.save();
+    await Device.updateOne(
+      {
+        companyId: session.companyId,
+        userId: session.userId,
+        deviceId: session.desktopDeviceId,
+        status: 'active',
+      },
+      { $set: { lastHeartbeatAt: session.lastHeartbeatAt } }
+    );
     const policy = await SecurityPolicy.findOne({ companyId: session.companyId });
     return NextResponse.json({
       status: 'connected',
