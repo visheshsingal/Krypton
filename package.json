@@ -11,7 +11,8 @@
     "superadmin:sync": "ts-node -O '{\"module\":\"commonjs\"}' scripts/sync-superadmin.ts",
     "desktop:dev": "npm --prefix desktop run dev",
     "desktop:build": "npm --prefix desktop run build",
-    "desktop:win": "npm --prefix desktop run build:win"
+    "desktop:win": "npm --prefix desktop run build:win",
+    "extension:build": "npm --prefix desktop run build:extension"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

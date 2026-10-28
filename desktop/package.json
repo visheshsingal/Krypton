@@ -7,6 +7,7 @@
     "dev": "vite",
     "dev:electron": "tsc -p tsconfig.electron.json && electron .",
     "build": "vite build && tsc -p tsconfig.electron.json",
+    "build:extension": "node scripts/build-browser-extension.cjs",
     "build:win": "node scripts/build-win-release.cjs",
     "build:mac": "node scripts/build-mac-release.cjs",
     "test": "jest"
@@ -21,15 +22,18 @@
     "ws": "^8.22.0"
   },
   "devDependencies": {
+    "@types/archiver": "^8.0.0",
     "@types/jest": "^29.5.12",
     "@types/node": "^20.14.2",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@types/ws": "^8.18.2",
     "@vitejs/plugin-react": "^4.3.0",
+    "archiver": "^8.0.0",
     "autoprefixer": "^10.4.19",
     "electron": "^30.0.9",
     "electron-builder": "^24.13.3",
+    "esbuild": "^0.28.2",
     "jest": "^29.7.0",
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.4",

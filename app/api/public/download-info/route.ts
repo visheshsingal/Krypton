@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import macOSRelease from '@/public/downloads/macos-release.json';
 import windowsRelease from '@/public/downloads/windows-release.json';
+import browserExtensionRelease from '@/public/downloads/browser-extension-release.json';
 
 export async function GET() {
   return NextResponse.json({
@@ -22,6 +23,7 @@ export async function GET() {
     downloads: {
       windows: windowsRelease,
       macos: macOSRelease,
+      browserExtension: browserExtensionRelease,
     },
     documentationUrl: '/docs/windows-deployment',
   });

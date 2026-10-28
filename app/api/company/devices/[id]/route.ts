@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import { connectDB } from '@/lib/db';
 import { Device } from '@/models/Device';
+import { BrowserExtensionSession } from '@/models/BrowserExtensionSession';
 import { authenticateRequest, enforceTenant } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
 
@@ -37,6 +38,13 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
     device.status = 'revoked';
     device.revokedAt = new Date();
     await device.save();
+    await BrowserExtensionSession.updateMany(
+      { companyId, desktopDeviceId: device.deviceId, status: { $in: ['pending', 'active'] } },
+      {
+        $set: { status: 'revoked', revokedAt: new Date() },
+        $unset: { sessionTokenHash: 1, pairingCodeHash: 1, browserInstallationId: 1 },
+      }
+    );
 
     await logAuditEvent({
       companyId,

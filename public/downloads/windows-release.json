@@ -1,10 +1,11 @@
 {
-  "available": false,
-  "releaseStatus": "managed-browser-build-not-published",
+  "available": true,
+  "releaseStatus": "built-unsigned",
   "version": "1.0.0",
   "architecture": "x64",
-  "installerName": null,
-  "downloadUrl": null,
-  "fileSizeBytes": null,
-  "sha256Checksum": null
+  "installerName": "Krypton-Security-Setup-1.0.0.exe",
+  "downloadUrl": "/downloads/Krypton-Security-Setup-1.0.0.exe",
+  "fileSizeBytes": 79568709,
+  "sha256Checksum": "d677791cdc2103e3e4853da4c0c242757df2e8e0763795d3f4fe922317556513",
+  "protectionScope": "Krypton-managed Chrome/Edge profile only; ordinary browser profiles and other apps are not protected."
 }

@@ -15,21 +15,29 @@ type ActivationResult = {
   error?: string;
 };
 
-type WebsiteProtectionStatus = {
-  available: boolean;
+type BrowserExtensionStatus = {
   status: string;
-  platform: string;
-  scope?: string;
-  browsers?: Array<'chrome' | 'edge'>;
+  installed: boolean;
+  connected: boolean;
+  protectionActive: boolean;
+  browser?: 'chrome' | 'edge' | null;
+  lastConnectedAt?: string | null;
+  error?: string;
 };
 
 type KryptonDesktopBridge = {
   getDeviceInfo: () => Promise<{ deviceId?: string; deviceName?: string; osVersion?: string }>;
   getStoredState: () => Promise<DesktopState | null>;
-  getWebsiteProtectionAvailability: () => Promise<WebsiteProtectionStatus>;
-  openProtectedBrowser: (browser: 'chrome' | 'edge', site: string) => Promise<{ success: boolean; error?: string }>;
+  createExtensionPairing: (browser: 'chrome' | 'edge') => Promise<{
+    success: boolean;
+    pairingCode?: string;
+    expiresAt?: string;
+    error?: string;
+  }>;
+  getExtensionStatus: () => Promise<BrowserExtensionStatus>;
   activate: (data: { licenseKey: string; email: string; password: string }) => Promise<ActivationResult>;
-  logout: () => Promise<void>;
+  logout: () => Promise<{ success: boolean; warning?: string }>;
+  openExternal: (url: string) => Promise<void>;
 };
 
 const desktopBridge = (window as Window & { kryptonDesktop?: KryptonDesktopBridge }).kryptonDesktop;
@@ -37,7 +45,7 @@ const desktopBridge = (window as Window & { kryptonDesktop?: KryptonDesktopBridg
 export default function App() {
   const [deviceInfo, setDeviceInfo] = useState<{ deviceId?: string; deviceName?: string; osVersion?: string } | null>(null);
   const [storedState, setStoredState] = useState<DesktopState | null>(null);
-  const [websiteStatus, setWebsiteStatus] = useState<WebsiteProtectionStatus | null>(null);
+  const [extensionStatus, setExtensionStatus] = useState<BrowserExtensionStatus | null>(null);
   const [isActivated, setIsActivated] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
   const [licenseKeyInput, setLicenseKeyInput] = useState('');
@@ -46,9 +54,11 @@ export default function App() {
   const [showPassword, setShowPassword] = useState(false);
   const [activationLoading, setActivationLoading] = useState(false);
   const [activationError, setActivationError] = useState<string | null>(null);
-  const [browserError, setBrowserError] = useState<string | null>(null);
-  const [openingSite, setOpeningSite] = useState<string | null>(null);
   const [selectedBrowser, setSelectedBrowser] = useState<'chrome' | 'edge'>('chrome');
+  const [pairingCode, setPairingCode] = useState<string | null>(null);
+  const [pairingExpiresAt, setPairingExpiresAt] = useState<string | null>(null);
+  const [pairingLoading, setPairingLoading] = useState(false);
+  const [extensionError, setExtensionError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!desktopBridge) {
@@ -59,15 +69,10 @@ export default function App() {
     Promise.all([
       desktopBridge.getDeviceInfo(),
       desktopBridge.getStoredState(),
-      desktopBridge.getWebsiteProtectionAvailability(),
     ])
-      .then(([device, state, protectionStatus]) => {
+      .then(([device, state]) => {
         setDeviceInfo(device);
         setStoredState(state);
-        setWebsiteStatus(protectionStatus);
-        if (protectionStatus.browsers?.length) {
-          setSelectedBrowser(protectionStatus.browsers[0]);
-        }
         setIsActivated(Boolean(state?.license && state?.token));
       })
       .catch((error: unknown) => {
@@ -76,6 +81,36 @@ export default function App() {
       })
       .finally(() => setIsInitializing(false));
   }, []);
+
+  useEffect(() => {
+    if (!isActivated || !desktopBridge) return;
+    let active = true;
+    const refreshStatus = async () => {
+      try {
+        const status = await desktopBridge.getExtensionStatus();
+        if (active) {
+          setExtensionStatus(status);
+          if (status.protectionActive) setPairingCode(null);
+        }
+      } catch (error) {
+        if (active) {
+          setExtensionStatus({
+            status: 'unavailable',
+            installed: false,
+            connected: false,
+            protectionActive: false,
+            error: error instanceof Error ? error.message : 'Could not load extension status.',
+          });
+        }
+      }
+    };
+    void refreshStatus();
+    const interval = window.setInterval(refreshStatus, pairingCode ? 10_000 : 30_000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [isActivated, pairingCode]);
 
   async function handleActivate(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -98,11 +133,7 @@ export default function App() {
       const state = await desktopBridge.getStoredState();
       setStoredState(state);
       setIsActivated(true);
-      const protectionStatus = await desktopBridge.getWebsiteProtectionAvailability();
-      setWebsiteStatus(protectionStatus);
-      if (protectionStatus.browsers?.length) {
-        setSelectedBrowser(protectionStatus.browsers[0]);
-      }
+      setExtensionStatus(await desktopBridge.getExtensionStatus());
     } catch (error) {
       setActivationError(error instanceof Error ? error.message : 'Could not connect to the activation service.');
     } finally {
@@ -113,25 +144,34 @@ export default function App() {
   async function handleLogout() {
     if (!desktopBridge) return;
     try {
-      await desktopBridge.logout();
+      const result = await desktopBridge.logout();
       setStoredState(null);
       setIsActivated(false);
+      setPairingCode(null);
+      setExtensionStatus(null);
+      setActivationError(result.warning || null);
     } catch (error) {
       setActivationError(error instanceof Error ? error.message : 'Could not log out.');
     }
   }
 
-  async function handleOpenProtectedBrowser(site: string) {
+  async function handleCreatePairingCode() {
     if (!desktopBridge) return;
-    setOpeningSite(site);
-    setBrowserError(null);
+    setPairingLoading(true);
+    setExtensionError(null);
+    setPairingCode(null);
     try {
-      const result = await desktopBridge.openProtectedBrowser(selectedBrowser, site);
-      if (!result.success) setBrowserError(result.error || 'Could not open the protected browser.');
+      const result = await desktopBridge.createExtensionPairing(selectedBrowser);
+      if (!result.success || !result.pairingCode || !result.expiresAt) {
+        setExtensionError(result.error || 'Could not create an activation code.');
+        return;
+      }
+      setPairingCode(result.pairingCode);
+      setPairingExpiresAt(result.expiresAt);
     } catch (error) {
-      setBrowserError(error instanceof Error ? error.message : 'Could not open the protected browser.');
+      setExtensionError(error instanceof Error ? error.message : 'Could not create an activation code.');
     } finally {
-      setOpeningSite(null);
+      setPairingLoading(false);
     }
   }
 
@@ -287,77 +327,104 @@ export default function App() {
               <ShieldCheck className="h-6 w-6 text-sky-300" />
             </div>
             <div>
-              <h2 className="text-xl font-semibold text-white">Website protection</h2>
+              <h2 className="text-xl font-semibold text-white">Browser protection</h2>
               <p className="mt-2 text-sm leading-6 text-slate-400">
-                Protection status for this device.
+                Use the shared Krypton extension in Chrome or Edge. It checks supported AI prompts locally.
               </p>
             </div>
           </div>
 
-          <div className={`mt-6 rounded-lg border p-4 ${
-            websiteStatus?.available
-              ? 'border-emerald-500/25 bg-emerald-500/[0.06]'
-              : 'border-amber-500/25 bg-amber-500/[0.06]'
-          }`}>
-            <p className={`text-sm font-medium ${
-              websiteStatus?.available ? 'text-emerald-200' : 'text-amber-200'
-            }`}>
-              {websiteStatus?.available ? 'Protected browser ready' : 'Protected browser unavailable'}
-            </p>
-            <p className="mt-2 text-xs leading-5 text-slate-400">
-              Krypton connects to a separate Chrome/Edge profile and checks AI-site submissions locally. Sign into Gmail in that browser profile; its login stays there. Your normal browser profile and other apps are not monitored. No extension is installed.
-            </p>
-            <label htmlFor="protected-browser" className="mt-4 block text-xs font-medium text-slate-300">
-              Choose browser
-            </label>
-            <select
-              id="protected-browser"
-              value={selectedBrowser}
-              onChange={(event) => setSelectedBrowser(event.target.value as 'chrome' | 'edge')}
-              disabled={!websiteStatus?.available || openingSite !== null}
-              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 disabled:opacity-40"
-            >
-              {(websiteStatus?.browsers || []).map((browser) => (
-                <option key={browser} value={browser}>
-                  {browser === 'chrome' ? 'Google Chrome' : 'Microsoft Edge'}
-                </option>
-              ))}
-            </select>
-            {websiteStatus?.status === 'browser_not_installed' && (
-              <p className="mt-2 text-xs text-amber-200">Install Chrome or Edge to use protected browsing.</p>
-            )}
-            <div className="mt-4 flex flex-wrap gap-2">
-              {[
-                ['chatgpt', 'Open ChatGPT'],
-                ['claude', 'Open Claude'],
-                ['gemini', 'Open Gemini'],
-                ['copilot', 'Open Copilot'],
-                ['perplexity', 'Open Perplexity'],
-              ].map(([site, label]) => (
-                <button
-                  key={site}
-                  type="button"
-                  disabled={!websiteStatus?.available || openingSite !== null}
-                  onClick={() => handleOpenProtectedBrowser(site)}
-                  className="rounded-lg border border-sky-300/20 bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-100 transition-colors hover:bg-sky-400/20 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  {openingSite === site ? 'Opening…' : label}
-                </button>
-              ))}
+          <div className="mt-6 rounded-lg border border-slate-700 bg-slate-950/70 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs text-slate-400">Extension status</span>
+              <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                extensionStatus?.protectionActive
+                  ? 'bg-emerald-500/15 text-emerald-300'
+                  : extensionStatus?.status === 'license_invalid' || extensionStatus?.status === 'revoked'
+                    ? 'bg-red-500/15 text-red-300'
+                    : 'bg-amber-500/15 text-amber-200'
+              }`}>
+                {extensionStatus?.protectionActive
+                  ? 'Protection Active'
+                  : extensionStatus?.status === 'connected'
+                    ? 'Connected'
+                    : extensionStatus?.status === 'installed'
+                      ? 'Installed · Not Activated'
+                      : extensionStatus?.status === 'license_invalid'
+                        ? 'License Invalid'
+                        : extensionStatus?.status === 'revoked'
+                          ? 'Access Revoked'
+                          : extensionStatus?.status === 'unavailable'
+                            ? 'Status Unavailable'
+                            : 'Not Installed'}
+              </span>
             </div>
-            {browserError && (
-              <p role="alert" className="mt-3 text-xs text-red-300">{browserError}</p>
-            )}
-            <p className="mt-3 text-xs leading-5 text-amber-200">
-              Admin-only locking of the signed-in Gmail account is not enabled yet; browser account changes are currently controlled by Chrome/Edge.
-            </p>
-            {websiteStatus?.status === 'license_validation_required' && (
-              <p className="mt-3 text-xs text-amber-200">
-                Reconnect to Krypton to validate your license before opening protected browsing.
+            {extensionStatus?.lastConnectedAt && (
+              <p className="mt-2 text-[11px] text-slate-500">
+                Last connected: {new Date(extensionStatus.lastConnectedAt).toLocaleString()}
               </p>
             )}
-            <p className="mt-2 text-xs text-slate-500">
-              Device: {deviceInfo?.deviceName || 'This computer'} · {websiteStatus?.platform || deviceInfo?.platform || 'Desktop'}
+            {extensionStatus?.error && (
+              <p role="alert" className="mt-2 text-xs text-amber-200">{extensionStatus.error}</p>
+            )}
+          </div>
+
+          <div className="mt-5 space-y-4">
+            <div>
+              <label htmlFor="extension-browser" className="mb-1 block text-xs font-medium text-slate-300">
+                Browser
+              </label>
+              <select
+                id="extension-browser"
+                value={selectedBrowser}
+                onChange={(event) => setSelectedBrowser(event.target.value as 'chrome' | 'edge')}
+                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+              >
+                <option value="chrome">Google Chrome</option>
+                <option value="edge">Microsoft Edge</option>
+              </select>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => void desktopBridge.openExternal('https://krypton-ten-theta.vercel.app/downloads/krypton-browser-extension.zip')}
+              className="w-full rounded-lg border border-sky-300/20 bg-sky-400/10 px-4 py-2.5 text-sm font-semibold text-sky-100 transition-colors hover:bg-sky-400/20"
+            >
+              Download common extension ZIP
+            </button>
+            <ol className="list-decimal space-y-1 pl-5 text-xs leading-5 text-slate-400">
+              <li>Extract the downloaded ZIP to a folder.</li>
+              <li>Open {selectedBrowser === 'chrome' ? 'chrome://extensions' : 'edge://extensions'} and turn on Developer mode.</li>
+              <li>Choose “Load unpacked” and select the extracted folder.</li>
+              <li>Return here, generate a one-time code, then enter it in the extension popup.</li>
+            </ol>
+            <p className="text-[11px] leading-5 text-slate-500">
+              This ZIP is for development or managed installation. Chrome Web Store publishing and its approved listing are not configured yet. The code expires after 10 minutes and can be used once.
+            </p>
+
+            <button
+              type="button"
+              onClick={() => void handleCreatePairingCode()}
+              disabled={pairingLoading}
+              className="w-full rounded-lg bg-sky-400 px-4 py-2.5 text-sm font-bold text-slate-950 transition-colors hover:bg-sky-300 disabled:cursor-wait disabled:opacity-50"
+            >
+              {pairingLoading ? 'Generating…' : 'Generate one-time activation code'}
+            </button>
+            {pairingCode && pairingExpiresAt && (
+              <div className="rounded-lg border border-sky-300/20 bg-sky-400/[0.06] p-4 text-center">
+                <p className="text-xs text-slate-300">Enter this code in the extension popup</p>
+                <p className="my-2 font-mono text-2xl font-bold tracking-[0.2em] text-sky-200">{pairingCode}</p>
+                <p className="text-[11px] text-slate-500">
+                  Expires {new Date(pairingExpiresAt).toLocaleTimeString()}
+                </p>
+              </div>
+            )}
+            {extensionError && <p role="alert" className="text-xs text-red-300">{extensionError}</p>}
+            <p className="text-[11px] leading-5 text-slate-500">
+              Prompt text and detected secrets are scanned locally and are not uploaded. Only redacted incident metadata is reported. Protection covers supported AI sites in Chrome/Edge, not other pages or browsers.
+            </p>
+            <p className="text-[11px] text-slate-500">
+              Device: {deviceInfo?.deviceName || 'This computer'} · {deviceInfo?.osVersion || 'Desktop OS'}
             </p>
           </div>
         </section>

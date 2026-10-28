@@ -10,11 +10,18 @@ export interface KryptonDesktopBridge {
     scope?: string;
   }>;
   openProtectedBrowser: (browser: 'chrome' | 'edge', site: string) => Promise<{ success: boolean; error?: string }>;
+  createExtensionPairing: (browser: 'chrome' | 'edge') => Promise<{
+    success: boolean;
+    pairingCode?: string;
+    expiresAt?: string;
+    error?: string;
+  }>;
+  getExtensionStatus: () => Promise<Record<string, unknown>>;
   activate: (data: { licenseKey: string; email: string; password: string }) => Promise<any>;
   heartbeat: () => Promise<any>;
   scanPrompt: (prompt: string) => Promise<any>;
   reportEvent: (eventData: any) => Promise<any>;
-  logout: () => Promise<void>;
+  logout: () => Promise<{ success: boolean; warning?: string }>;
   openExternal: (url: string) => Promise<void>;
   getAppVersion: () => Promise<string>;
 }
@@ -24,6 +31,8 @@ const bridge: KryptonDesktopBridge = {
   getStoredState: () => ipcRenderer.invoke('desktop:get-stored-state'),
   getWebsiteProtectionAvailability: () => ipcRenderer.invoke('desktop:get-website-protection-availability'),
   openProtectedBrowser: (browser, site) => ipcRenderer.invoke('desktop:open-protected-browser', browser, site),
+  createExtensionPairing: (browser) => ipcRenderer.invoke('desktop:create-extension-pairing', browser),
+  getExtensionStatus: () => ipcRenderer.invoke('desktop:get-extension-status'),
   activate: (data) => ipcRenderer.invoke('desktop:activate', data),
   heartbeat: () => ipcRenderer.invoke('desktop:heartbeat'),
   scanPrompt: (prompt) => ipcRenderer.invoke('desktop:scan-prompt', prompt),

@@ -8,3 +8,4 @@ export * from './DetectionRule';
 export * from './SecurityEvent';
 export * from './AuditLog';
 export * from './Invitation';
+export * from './Subscription';

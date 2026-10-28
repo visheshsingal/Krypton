@@ -213,6 +213,56 @@ function setupIpcHandlers() {
     };
   });
 
+  ipcMain.handle('desktop:create-extension-pairing', async (_, browser: unknown) => {
+    if (browser !== 'chrome' && browser !== 'edge') {
+      return { success: false, error: 'Choose Chrome or Edge.' };
+    }
+    const token = store.get('token');
+    const deviceId = store.get('deviceId');
+    if (!token || !deviceId) return { success: false, error: 'Sign in to Krypton Desktop first.' };
+    try {
+      const response = await fetch(`${getBackendUrl()}/desktop/extension/pair`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ deviceId, browser }),
+      });
+      const data = (await response.json()) as { pairingCode?: string; expiresAt?: string; error?: string };
+      if (!response.ok) return { success: false, error: data.error || 'Could not create an activation code.' };
+      return { success: true, pairingCode: data.pairingCode, expiresAt: data.expiresAt };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Could not connect to Krypton.',
+      };
+    }
+  });
+
+  ipcMain.handle('desktop:get-extension-status', async () => {
+    const token = store.get('token');
+    const deviceId = store.get('deviceId');
+    if (!token || !deviceId) return { status: 'not_installed', installed: false, connected: false, protectionActive: false };
+    try {
+      const response = await fetch(
+        `${getBackendUrl()}/desktop/extension/status?deviceId=${encodeURIComponent(deviceId)}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      const data = await response.json() as Record<string, unknown>;
+      if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Could not load extension status.');
+      return data;
+    } catch (error) {
+      return {
+        status: 'unavailable',
+        installed: false,
+        connected: false,
+        protectionActive: false,
+        error: error instanceof Error ? error.message : 'Could not connect to Krypton.',
+      };
+    }
+  });
+
   // Stored state
   ipcMain.handle('desktop:get-stored-state', () => {
     return store.getAll();
@@ -317,9 +367,30 @@ function setupIpcHandlers() {
 
   // Logout
   ipcMain.handle('desktop:logout', async () => {
+    const token = store.get('token');
+    const deviceId = store.get('deviceId');
+    let extensionRevoked = !token || !deviceId;
+    if (token && deviceId) {
+      try {
+        const response = await fetch(`${getBackendUrl()}/desktop/extension/session`, {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ deviceId }),
+        });
+        extensionRevoked = response.ok;
+      } catch (error) {
+        console.warn('[ExtensionSession] Could not revoke extension session during logout:', error);
+      }
+    }
     store.clearAuth();
     await closeManagedBrowserSessions();
-    return { success: true };
+    return {
+      success: true,
+      warning: extensionRevoked ? undefined : 'Browser protection could not be revoked while offline. Reconnect Krypton Desktop to revoke it.',
+    };
   });
 }
 

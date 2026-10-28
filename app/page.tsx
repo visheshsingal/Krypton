@@ -15,14 +15,16 @@ import {
   Terminal,
   UserRoundCog,
 } from 'lucide-react';
+import windowsRelease from '@/public/downloads/windows-release.json';
 
 const demoPrompt = 'const apiKey = "sk-proj-abc1234567890def1234567890ghij";';
 
 export default function HomePage() {
   const [prompt, setPrompt] = useState(demoPrompt);
-  const [windowsDownload, setWindowsDownload] = useState<{ available: boolean; downloadUrl?: string }>({
-    available: false,
-  });
+  const windowsDownload = {
+    available: windowsRelease.available,
+    downloadUrl: windowsRelease.downloadUrl || undefined,
+  };
   const [macDownloads, setMacDownloads] = useState<{
     available: boolean;
     architectures?: {
@@ -36,18 +38,6 @@ export default function HomePage() {
   const hasSecret = /sk-(?:proj-)?[a-zA-Z0-9_-]{24,}/.test(prompt);
 
   useEffect(() => {
-    fetch('/downloads/windows-release.json', { cache: 'no-store' })
-      .then((response) => {
-        if (!response.ok) throw new Error('Windows release metadata is unavailable.');
-        return response.json();
-      })
-      .then((release) => {
-        if (release.available === true && release.downloadUrl) {
-          setWindowsDownload(release);
-        }
-      })
-      .catch((error) => console.error('Could not load Windows download metadata:', error));
-
     fetch('/downloads/macos-release.json', { cache: 'no-store' })
       .then((response) => {
         if (!response.ok) throw new Error('Mac release metadata is unavailable.');
@@ -89,8 +79,8 @@ export default function HomePage() {
               </span>
             </h1>
             <p className="mx-auto mt-6 max-w-2xl text-base leading-7 text-slate-400 sm:text-lg">
-              Krypton is built for local-first security controls. System-wide
-              website blocking is unavailable until its native filter is installed.
+              Krypton scans AI submissions in its managed Chrome/Edge profile.
+              Normal browser profiles and system-wide website filtering are not covered.
             </p>
             <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row sm:flex-wrap">
               {showWindowsDownload ? (
@@ -105,7 +95,7 @@ export default function HomePage() {
               ) : (
                 <span className="inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-6 py-3.5 text-sm font-semibold text-slate-500">
                   <Download className="h-4 w-4" />
-                  Windows installer (coming soon)
+                  Windows installer unavailable
                 </span>
               )}
               {showMacDownloads ? (
@@ -148,7 +138,7 @@ export default function HomePage() {
               </a>
             </div>
             <p className="mt-4 text-xs text-slate-500">
-              Windows 10/11 x64 · macOS Apple silicon and Intel downloads pending signed release
+              Windows 10/11 x64 · macOS downloads pending signed release
             </p>
           </div>
 
@@ -325,7 +315,7 @@ export default function HomePage() {
             ) : (
               <span className="inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-5 py-3 text-sm font-semibold text-slate-500">
                 <Download className="h-4 w-4" />
-                Windows installer (coming soon)
+                Windows installer unavailable
               </span>
             )}
             {showMacDownloads ? (

@@ -25,7 +25,14 @@ export default function PrivacyPage() {
           </section>
 
           <section className="space-y-2">
-            <h2 className="text-lg font-bold text-slate-900">3. Multi-Tenant Isolation</h2>
+            <h2 className="text-lg font-bold text-slate-900">3. Browser Extension</h2>
+            <p>
+              When an authorized user activates the Krypton Chrome or Edge extension, supported AI-site prompts are scanned locally. The extension sends only the site hostname and bounded detection metadata for blocked or declined-warning submissions; it does not transmit prompt text, matched secret values, or prompt excerpts. The extension checks its license and company policy with Krypton periodically and may use the last valid policy during the account's configured offline grace period.
+            </p>
+          </section>
+
+          <section className="space-y-2">
+            <h2 className="text-lg font-bold text-slate-900">4. Multi-Tenant Isolation</h2>
             <p>
               Company records, employee lists, device registrations, and security events are strictly isolated using tenant-scoped identifiers verified on every serverless execution. Cross-tenant data access is systematically prevented.
             </p>

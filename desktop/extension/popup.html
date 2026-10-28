@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Krypton AI Security</title>
+    <style>
+      body { width: 320px; margin: 0; padding: 18px; color: #e2e8f0; background: #020617; font: 14px/1.5 system-ui, sans-serif; }
+      h1 { margin: 0; color: #fff; font-size: 17px; }
+      p { color: #94a3b8; font-size: 12px; }
+      label { display: block; margin: 14px 0 5px; font-size: 12px; color: #cbd5e1; }
+      input { box-sizing: border-box; width: 100%; padding: 10px; border: 1px solid #334155; border-radius: 8px; background: #0f172a; color: #fff; font: 13px monospace; }
+      button { width: 100%; margin-top: 12px; padding: 10px; border: 0; border-radius: 8px; background: #38bdf8; color: #020617; font-weight: 700; cursor: pointer; }
+      button:disabled { opacity: .5; cursor: wait; }
+      [role="status"] { margin-top: 12px; font-size: 12px; }
+      .active { color: #6ee7b7; }
+      .error { color: #fca5a5; }
+    </style>
+  </head>
+  <body>
+    <h1>Krypton AI Security</h1>
+    <p id="protection-status" role="status">Checking connection…</p>
+    <form id="pair-form">
+      <label for="pairing-code">One-time code from Krypton Desktop</label>
+      <input id="pairing-code" name="pairing-code" autocomplete="one-time-code" maxlength="20" required>
+      <button id="activate-button" type="submit">Activate protection</button>
+    </form>
+    <script src="popup.js"></script>
+  </body>
+</html>

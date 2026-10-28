@@ -682,7 +682,7 @@ export default function CompanyDashboard() {
               <div>
                 <h1 className="text-xl font-bold text-white">Registered Workstation Devices</h1>
                 <p className="text-xs text-slate-400 mt-1">
-                  Active Windows endpoints running the Krypton desktop DLP agent. Revoking a device bars it from prompt validation.
+                  Krypton desktop devices and their browser-extension protection status. Revoking a device disables its linked extension sessions.
                 </p>
               </div>
 
@@ -694,6 +694,7 @@ export default function CompanyDashboard() {
                       <th className="p-4">Assigned User</th>
                       <th className="p-4">Hardware ID</th>
                       <th className="p-4">Platform</th>
+                      <th className="p-4">Browser Extension</th>
                       <th className="p-4">Last Heartbeat</th>
                       <th className="p-4">Status</th>
                       <th className="p-4 text-right">Actions</th>
@@ -708,7 +709,17 @@ export default function CompanyDashboard() {
                         </td>
                         <td className="p-4 text-slate-300">{dev.user?.name || dev.user?.email || 'N/A'}</td>
                         <td className="p-4 font-mono text-[11px] text-slate-500">{dev.deviceId}</td>
-                        <td className="p-4 text-slate-400 text-[11px]">{dev.osVersion}</td>
+                        <td className="p-4 text-slate-400 text-[11px]">{dev.platform || dev.osVersion}</td>
+                        <td className="p-4 text-[11px]">
+                          <span className={dev.extension?.protectionActive ? 'text-emerald-300' : 'text-slate-500'}>
+                            {dev.extension?.status || 'Not Installed'}
+                          </span>
+                          {dev.extension?.browser && (
+                            <span className="ml-1 text-slate-500">
+                              ({dev.extension.browser === 'chrome' ? 'Chrome' : 'Edge'})
+                            </span>
+                          )}
+                        </td>
                         <td className="p-4 text-slate-500 font-mono text-[11px]">
                           {new Date(dev.lastHeartbeatAt).toLocaleString()}
                         </td>
