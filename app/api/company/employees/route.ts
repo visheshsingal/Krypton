@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
     const companyId = tenant.companyId;
 
     const memberships = await Membership.find({ companyId })
-      .populate('userId', 'name email role isActive hasLicenseSeat createdAt')
+      .populate('userId', 'name email role isActive hasLicenseSeat phone department designation systemId createdAt')
       .sort({ createdAt: -1 });
 
     const invitations = await Invitation.find({
@@ -51,6 +51,10 @@ export async function GET(req: NextRequest) {
         userId: u?._id,
         name: u?.name || 'Unknown',
         email: u?.email || '',
+        phone: u?.phone || '',
+        department: u?.department || '',
+        designation: u?.designation || '',
+        systemId: u?.systemId || '',
         role: m.role,
         status: m.status,
         hasSeat: u?.hasLicenseSeat || false,
@@ -92,7 +96,8 @@ export async function POST(req: NextRequest) {
 
     await connectDB();
     const companyId = tenant.companyId;
-    const { email, name, assignLicense = true } = await req.json();
+    const { email, name } = await req.json();
+    const assignLicense = false;
 
     if (!email || !name) {
       return NextResponse.json({ error: 'Name and email are required.' }, { status: 400 });
@@ -129,6 +134,7 @@ export async function POST(req: NextRequest) {
     if (existingInvitation) {
       existingInvitation.token = inviteToken;
       existingInvitation.expiresAt = expiresAt;
+      existingInvitation.assignLicense = false;
       invitation = await existingInvitation.save();
     } else {
       invitation = await Invitation.create({
@@ -147,8 +153,7 @@ export async function POST(req: NextRequest) {
       normalizedEmail,
       name.trim(),
       company.name,
-      inviteToken,
-      license.licenseKey
+      inviteToken
     );
 
     await logAuditEvent({

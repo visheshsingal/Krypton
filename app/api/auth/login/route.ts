@@ -5,6 +5,7 @@ import { connectDB } from '@/lib/db';
 import { User } from '@/models/User';
 import { Company } from '@/models/Company';
 import { License } from '@/models/License';
+import { Membership } from '@/models/Membership';
 import { signAccessToken, signRefreshToken } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
 
@@ -69,6 +70,20 @@ export async function POST(req: NextRequest) {
           { error: 'Your account has been deactivated. Please contact your company administrator.' },
           { status: 403 }
         );
+      }
+      if (user.role === 'employee') {
+        const membership = await Membership.findOne({
+          companyId: user.companyId,
+          userId: user._id,
+          status: 'active',
+          hasSeat: true,
+        });
+        if (!user.hasLicenseSeat || !membership) {
+          return NextResponse.json(
+            { error: 'No license seat is assigned to this employee. Ask your company administrator to assign one.' },
+            { status: 403 }
+          );
+        }
       }
     }
 

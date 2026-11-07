@@ -30,5 +30,26 @@
       "run_at": "document_start",
       "all_frames": false
     }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "pdf.worker.min.mjs",
+        "tesseract-worker.min.js",
+        "tesseract-core/*",
+        "tessdata/*"
+      ],
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://*.chatgpt.com/*",
+        "https://claude.ai/*",
+        "https://*.claude.ai/*",
+        "https://gemini.google.com/*",
+        "https://copilot.microsoft.com/*",
+        "https://*.bing.com/*",
+        "https://www.perplexity.ai/*",
+        "https://*.perplexity.ai/*"
+      ]
+    }
   ]
 }

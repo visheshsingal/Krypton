@@ -85,7 +85,7 @@ export class PromptSecurityEngine {
           const end = start + matchedText.length;
 
           // Perform extra false-positive verification for specific categories
-          if (this.isFalsePositive(matchedText, rule)) {
+          if (this.isFalsePositive(matchedText, rule, prompt, start)) {
             continue;
           }
 
@@ -207,7 +207,7 @@ export class PromptSecurityEngine {
   /**
    * Domain-specific false positive checking
    */
-  private isFalsePositive(text: string, rule: DetectionRuleDTO): boolean {
+  private isFalsePositive(text: string, rule: DetectionRuleDTO, prompt: string, start: number): boolean {
     if (rule.ruleCode === 'PII_CREDIT_CARD') {
       const digitsOnly = text.replace(/\D/g, '');
       if (digitsOnly.length < 13 || digitsOnly.length > 19) return true;
@@ -220,6 +220,15 @@ export class PromptSecurityEngine {
       if (text.startsWith('000') || text.startsWith('666') || text.startsWith('9')) {
         return true;
       }
+    }
+
+    if (rule.ruleCode === 'PII_BANK_ACCOUNT') {
+      const context = prompt.slice(Math.max(0, start - 80), start);
+      const accountLabel = /(?:\bbank\s+account\b|\baccount\s*(?:number|no\.?|num(?:ber)?)\b|\baccount\s*#|\bacct\s*(?:number|no\.?)\b|\bacct\s*#|\ba\/c(?:\s*(?:number|no\.?))?\b)/i;
+      const labelMatch = context.match(accountLabel);
+      if (!labelMatch) return true;
+      const textAfterLabel = context.slice((labelMatch.index || 0) + labelMatch[0].length);
+      if (/\d/.test(textAfterLabel) || textAfterLabel.length > 48) return true;
     }
 
     return false;

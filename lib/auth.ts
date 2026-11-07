@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
 import { User, IUser } from '@/models/User';
 import { Company } from '@/models/Company';
+import { Membership } from '@/models/Membership';
 import { connectDB } from './db';
 
 function getSigningSecret(name: 'JWT_SECRET' | 'REFRESH_TOKEN_SECRET', developmentFallback: string): string {
@@ -80,6 +81,17 @@ export async function authenticateRequest(req: NextRequest): Promise<{ user?: Au
     const user = await User.findById(decoded.sub);
     if (!user || !user.isActive) {
       return { error: 'User account is deactivated or invalid', status: 401 };
+    }
+    if (user.role === 'employee') {
+      const membership = await Membership.findOne({
+        companyId: user.companyId,
+        userId: user._id,
+        status: 'active',
+        hasSeat: true,
+      }).select('_id');
+      if (!user.hasLicenseSeat || !membership) {
+        return { error: 'A license seat is not assigned to this employee', status: 403 };
+      }
     }
     if (user.role !== 'super_admin' && user.companyId) {
       const company = await Company.findById(user.companyId).select('status');

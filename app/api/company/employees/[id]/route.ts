@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import bcrypt from 'bcryptjs';
 import { connectDB } from '@/lib/db';
 import { User } from '@/models/User';
 import { Membership } from '@/models/Membership';
@@ -23,7 +24,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const companyId = tenant.companyId;
     const targetUserId = params.id;
     const body = await req.json();
-    const { isActive, hasLicenseSeat } = body;
+    const { isActive, hasLicenseSeat, name, phone, department, designation, systemId } = body;
 
     const targetUser = await User.findById(targetUserId);
     if (!targetUser || targetUser.companyId?.toString() !== companyId) {
@@ -36,18 +37,108 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       }
     }
 
+    if (name !== undefined && typeof name === 'string' && name.trim()) {
+      targetUser.name = name.trim();
+    }
+    if (phone !== undefined) {
+      targetUser.phone = typeof phone === 'string' ? phone.trim() : '';
+    }
+    if (department !== undefined) {
+      targetUser.department = typeof department === 'string' ? department.trim() : '';
+    }
+    if (designation !== undefined) {
+      targetUser.designation = typeof designation === 'string' ? designation.trim() : '';
+    }
+    if (systemId !== undefined) {
+      targetUser.systemId = typeof systemId === 'string' ? systemId.trim() : '';
+    }
+
     if (isActive !== undefined) {
       targetUser.isActive = isActive;
       if (!isActive && targetUser.hasLicenseSeat) {
         await releaseSeatForUser(companyId, targetUser._id, auth.user);
+        targetUser.hasLicenseSeat = false;
       }
     }
 
     if (hasLicenseSeat === false && targetUser.hasLicenseSeat) {
       await releaseSeatForUser(companyId, targetUser._id, auth.user);
+      targetUser.hasLicenseSeat = false;
+    } else if (hasLicenseSeat === true) {
+      if (targetUser.role !== 'employee') {
+        return NextResponse.json({ error: 'License seats can only be assigned to employees.' }, { status: 400 });
+      }
+      const password = typeof body.password === 'string' ? body.password : '';
+      if (
+        password.length < 12 ||
+        password.length > 128 ||
+        password.toLowerCase() === targetUser.email.toLowerCase()
+      ) {
+        return NextResponse.json({
+          error: 'Set a unique password with at least 12 characters. It cannot be the employee email address.',
+        }, { status: 400 });
+      }
+
+      const membership = await Membership.findOne({ companyId, userId: targetUser._id, status: 'active' });
+      if (!membership) {
+        return NextResponse.json({ error: 'An active company membership is required before assigning a seat.' }, { status: 409 });
+      }
+
+      const passwordHash = await bcrypt.hash(password, 12);
+      if (targetUser.hasLicenseSeat) {
+        targetUser.passwordHash = passwordHash;
+        membership.hasSeat = true;
+        await Promise.all([targetUser.save(), membership.save()]);
+      } else {
+        const { License } = await import('@/models/License');
+        const license = await License.findOne({ companyId });
+        if (!license || license.status !== 'active' || license.expiresAt <= new Date()) {
+          return NextResponse.json({ error: 'The company license is unavailable or expired.' }, { status: 403 });
+        }
+        const allocatedLicense = await License.findOneAndUpdate(
+          {
+            _id: license._id,
+            status: 'active',
+            expiresAt: { $gt: new Date() },
+            $expr: { $lt: ['$occupiedSeats', '$seatLimit'] },
+          },
+          { $inc: { occupiedSeats: 1 } },
+          { new: true },
+        );
+        if (!allocatedLicense) {
+          return NextResponse.json({ error: 'No available license seats remaining. Please release an unused seat.' }, { status: 400 });
+        }
+
+        const claimedUser = await User.findOneAndUpdate(
+          { _id: targetUser._id, isActive: true, hasLicenseSeat: { $ne: true } },
+          { $set: { hasLicenseSeat: true, passwordHash } },
+          { new: true },
+        );
+        if (!claimedUser) {
+          await License.updateOne({ _id: allocatedLicense._id, occupiedSeats: { $gt: 0 } }, { $inc: { occupiedSeats: -1 } });
+          return NextResponse.json({ error: 'Employee seat status changed. Refresh the directory and try again.' }, { status: 409 });
+        }
+        try {
+          membership.hasSeat = true;
+          await membership.save();
+          targetUser.hasLicenseSeat = true;
+          targetUser.passwordHash = passwordHash;
+        } catch (error) {
+          await Promise.all([
+            User.updateOne(
+              { _id: targetUser._id, hasLicenseSeat: true },
+              { $set: { hasLicenseSeat: false, passwordHash: targetUser.passwordHash } },
+            ),
+            License.updateOne({ _id: allocatedLicense._id, occupiedSeats: { $gt: 0 } }, { $inc: { occupiedSeats: -1 } }),
+          ]);
+          throw error;
+        }
+      }
     }
 
-    await targetUser.save();
+    if (hasLicenseSeat !== true || targetUser.hasLicenseSeat === false) {
+      await targetUser.save();
+    }
 
     await logAuditEvent({
       companyId,
@@ -57,7 +148,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       action: 'EMPLOYEE_STATUS_UPDATED',
       entityType: 'User',
       entityId: targetUser._id.toString(),
-      details: { isActive, hasLicenseSeat },
+      details: { isActive, hasLicenseSeat, name, phone, department, designation, systemId },
       req,
     });
 
@@ -67,6 +158,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         id: targetUser._id,
         name: targetUser.name,
         email: targetUser.email,
+        phone: targetUser.phone,
+        department: targetUser.department,
+        designation: targetUser.designation,
+        systemId: targetUser.systemId,
         isActive: targetUser.isActive,
         hasLicenseSeat: targetUser.hasLicenseSeat,
       },

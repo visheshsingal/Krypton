@@ -16,12 +16,15 @@
   },
   "dependencies": {
     "@krypton/shared": "file:../shared",
+    "@tesseract.js-data/eng": "^1.0.0",
     "clsx": "^2.1.1",
-    "extract-zip": "^2.0.1",
+    "fflate": "^0.8.3",
     "lucide-react": "^0.395.0",
+    "pdfjs-dist": "^4.10.38",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tailwind-merge": "^2.3.0",
+    "tesseract.js": "^5.1.1",
     "ws": "^8.22.0"
   },
   "devDependencies": {

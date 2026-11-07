@@ -25,8 +25,7 @@ export async function sendInvitationEmail(
   toEmail: string,
   inviteeName: string,
   companyName: string,
-  inviteToken: string,
-  licenseKey: string
+  inviteToken: string
 ): Promise<boolean> {
   const inviteUrl = `${APP_URL}/accept-invitation?token=${inviteToken}`;
   const downloadUrl = `${APP_URL}/download`;
@@ -41,9 +40,10 @@ export async function sendInvitationEmail(
         You have been invited by <strong>${companyName}</strong> to join their AI Data Governance & Security workspace on Krypton.
       </p>
       
-      <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 16px; border-radius: 6px; margin: 20px 0;">
-        <p style="margin: 0 0 8px 0; font-size: 13px; color: #64748b; font-weight: 600; text-transform: uppercase;">Your Company License Key</p>
-        <code style="font-family: monospace; font-size: 16px; color: #0f172a; background: #e2e8f0; padding: 4px 8px; border-radius: 4px; display: inline-block;">${licenseKey}</code>
+      <div style="background: #eff6ff; border: 1px solid #bfdbfe; padding: 16px; border-radius: 6px; margin: 20px 0;">
+        <p style="margin: 0; color: #1e3a8a; font-size: 13px;">
+          Your company administrator will assign your license seat and provide your sign-in details separately. You will not be able to sign in until then.
+        </p>
       </div>
 
       <div style="margin: 24px 0;">

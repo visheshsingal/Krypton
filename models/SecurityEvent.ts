@@ -20,7 +20,12 @@ export interface ISecurityEvent extends Document {
     | 'pii'
     | 'custom_keyword'
     | 'custom_regex';
+  eventType: 'security_detection' | 'prompt_submission';
   actionTaken: 'allow' | 'warn' | 'block';
+  warningResponse?: 'proceeded' | 'dismissed';
+  inputType?: 'text' | 'file';
+  fileCount?: number;
+  fileTypes?: string[];
   redactedPreview: string;
   explanation: string;
   timestamp: Date;
@@ -69,12 +74,25 @@ const SecurityEventSchema = new Schema<ISecurityEvent>(
       ],
       index: true,
     },
+    eventType: {
+      type: String,
+      enum: ['security_detection', 'prompt_submission'],
+      default: 'security_detection',
+      index: true,
+    },
     actionTaken: {
       type: String,
       enum: ['allow', 'warn', 'block'],
       required: true,
       index: true,
     },
+    warningResponse: {
+      type: String,
+      enum: ['proceeded', 'dismissed'],
+    },
+    inputType: { type: String, enum: ['text', 'file'] },
+    fileCount: { type: Number, min: 1, max: 10 },
+    fileTypes: { type: [String], default: undefined },
     redactedPreview: { type: String, required: true, trim: true },
     explanation: { type: String, default: '' },
     timestamp: { type: Date, default: Date.now, index: true },

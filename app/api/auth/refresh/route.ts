@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { connectDB } from '@/lib/db';
 import { User } from '@/models/User';
+import { Membership } from '@/models/Membership';
 import { signAccessToken, signRefreshToken } from '@/lib/auth';
 
 export async function POST(req: NextRequest) {
@@ -30,6 +31,17 @@ export async function POST(req: NextRequest) {
 
     if (!user || !user.isActive) {
       return NextResponse.json({ error: 'Invalid or expired refresh token' }, { status: 401 });
+    }
+    if (user.role === 'employee') {
+      const membership = await Membership.findOne({
+        companyId: user.companyId,
+        userId: user._id,
+        status: 'active',
+        hasSeat: true,
+      }).select('_id');
+      if (!user.hasLicenseSeat || !membership) {
+        return NextResponse.json({ error: 'A license seat is not assigned to this employee.' }, { status: 403 });
+      }
     }
 
     const newAccessToken = signAccessToken({

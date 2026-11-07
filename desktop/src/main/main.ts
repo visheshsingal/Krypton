@@ -5,20 +5,15 @@ import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 import { spawn } from 'node:child_process';
-import extractZip from 'extract-zip';
 import { DesktopStore } from './store';
 import { compareAppVersions, parseWindowsReleaseManifest, WindowsReleaseManifest } from './app-update';
 import { enumerateRemovableUsbVolumes, UsbActivityEvent, UsbDlpMonitor } from './usb-dlp-monitor';
 import { PromptSecurityEngine } from '../engine/scanner';
 import { SecurityPolicyDTO } from '@krypton/shared';
+import { findManagedBrowserExecutable, isManagedBrowserKind, ManagedBrowserKind, ManagedBrowserSession } from './managed-browser';
+import { readVerifiedExtensionFiles } from './extension-package';
 import {
-  findManagedBrowserExecutable,
-  isManagedBrowserKind,
-  ManagedBrowserKind,
-  ManagedBrowserSession,
-} from './managed-browser';
-import {
-  createBlockedPromptEvent,
+  createPromptSubmissionEvent,
   getOfflineProtectionState,
   isProtectedAiSite,
   PROTECTED_AI_SITES,
@@ -47,8 +42,28 @@ const productionWebsiteUrl = 'https://krypton-ten-theta.vercel.app';
 const windowsReleaseManifestUrl = `${productionWebsiteUrl}/downloads/windows-release.json`;
 const extensionDownloadUrl = `${productionWebsiteUrl}/downloads/krypton-browser-extension.zip`;
 const extensionMetadataUrl = `${productionWebsiteUrl}/downloads/browser-extension-release.json`;
-const extensionFiles = ['background.js', 'content.js', 'manifest.json', 'popup.html', 'popup.js'];
+const extensionFiles = [
+  'background.js',
+  'content.js',
+  'manifest.json',
+  'pdf.worker.min.mjs',
+  'popup.html',
+  'popup.js',
+  'tesseract-worker.min.js',
+  'tesseract-core/tesseract-core.wasm.js',
+  'tesseract-core/tesseract-core.wasm',
+  'tesseract-core/tesseract-core-simd.wasm.js',
+  'tesseract-core/tesseract-core-simd.wasm',
+  'tesseract-core/tesseract-core-lstm.wasm.js',
+  'tesseract-core/tesseract-core-lstm.wasm',
+  'tesseract-core/tesseract-core-simd-lstm.wasm.js',
+  'tesseract-core/tesseract-core-simd-lstm.wasm',
+  'tessdata/eng.traineddata.gz',
+].sort();
+const extensionDirectories = ['tesseract-core', 'tessdata'].sort();
 const MAX_UPDATE_INSTALLER_BYTES = 250 * 1024 * 1024;
+const MAX_EXTENSION_PACKAGE_BYTES = 60 * 1024 * 1024;
+const MAX_EXTENSION_UNCOMPRESSED_BYTES = 60 * 1024 * 1024;
 
 async function fetchWindowsRelease(): Promise<WindowsReleaseManifest> {
   const response = await fetch(windowsReleaseManifestUrl, {
@@ -114,6 +129,7 @@ async function readLimitedResponse(response: Response, maxBytes: number): Promis
   }
   return Buffer.concat(chunks, totalBytes);
 }
+
 const configuredBackendUrl = process.env.KRYPTON_API_URL || (isDev ? 'http://localhost:5000/api' : productionBackendUrl);
 
 function getBackendUrl(): string {
@@ -238,7 +254,8 @@ async function openProtectedBrowser(browserValue: unknown, siteValue: unknown) {
         browser: browserValue,
         profileRoot: path.join(app.getPath('userData'), 'protected-browser-profiles'),
         scanner: securityEngine,
-        onBlocked: (result, hostname) => reportBrowserBlock(browserValue, result, hostname),
+        onSubmission: (result, hostname, actionTaken, warningResponse) =>
+          reportBrowserSubmission(browserValue, result, hostname, actionTaken, warningResponse),
       });
       managedBrowserSessions.set(browserValue, browserSession);
     }
@@ -325,7 +342,7 @@ function setupIpcHandlers() {
         return { success: false, error: 'The extension download was not a valid ZIP package.' };
       }
 
-      const packageBytes = await readLimitedResponse(response, 10 * 1024 * 1024);
+      const packageBytes = await readLimitedResponse(response, MAX_EXTENSION_PACKAGE_BYTES);
       if (
         packageBytes.length < 4 ||
         packageBytes[0] !== 0x50 ||
@@ -342,21 +359,25 @@ function setupIpcHandlers() {
 
       const extensionRoot = path.join(app.getPath('userData'), 'browser-extension');
       const browserDirectory = path.join(extensionRoot, browserValue);
-      const temporaryPath = path.join(extensionRoot, `${browserValue}-${crypto.randomUUID()}.zip`);
       const stagingDirectory = path.join(extensionRoot, `${browserValue}-${crypto.randomUUID()}`);
       let installedDirectory = false;
       try {
         await fs.mkdir(extensionRoot, { recursive: true });
-        await fs.writeFile(temporaryPath, packageBytes, { flag: 'wx' });
-        await extractZip(temporaryPath, { dir: stagingDirectory });
-        const extractedFiles = (await fs.readdir(stagingDirectory)).sort();
-        if (
-          extractedFiles.length !== extensionFiles.length ||
-          extractedFiles.some((file, index) => file !== [...extensionFiles].sort()[index])
-        ) {
-          throw new Error('The extension ZIP contains unexpected files.');
+        const extractedFiles = readVerifiedExtensionFiles(
+          packageBytes,
+          extensionFiles,
+          extensionDirectories,
+          MAX_EXTENSION_UNCOMPRESSED_BYTES,
+        );
+        await fs.mkdir(stagingDirectory, { recursive: true });
+        for (const relativePath of extensionFiles) {
+          const contents = extractedFiles[relativePath];
+          if (!contents) throw new Error('The extension ZIP is missing a required file.');
+          const filePath = path.join(stagingDirectory, ...relativePath.split('/'));
+          await fs.mkdir(path.dirname(filePath), { recursive: true });
+          await fs.writeFile(filePath, contents, { flag: 'wx' });
         }
-        const manifest = JSON.parse(await fs.readFile(path.join(stagingDirectory, 'manifest.json'), 'utf8')) as {
+        const manifest = JSON.parse(Buffer.from(extractedFiles['manifest.json']).toString('utf8')) as {
           manifest_version?: number;
           background?: { service_worker?: string };
           content_scripts?: Array<{ js?: string[] }>;
@@ -383,8 +404,6 @@ function setupIpcHandlers() {
           };
         }
         throw error;
-      } finally {
-        await fs.rm(temporaryPath, { force: true });
       }
 
       return { success: true, extensionDirectory: browserDirectory };
@@ -812,25 +831,30 @@ async function reportDesktopUsbEvent(event: UsbActivityEvent): Promise<void> {
   }
 }
 
-function reportBrowserBlock(
+function reportBrowserSubmission(
   browser: ManagedBrowserKind,
   result: import('@krypton/shared').PromptScanResult,
   hostname: string,
+  actionTaken: 'allow' | 'warn' | 'block',
+  warningResponse?: 'proceeded' | 'dismissed',
 ): void {
   const now = Date.now();
   const recent = (browserEventTimes.get(browser) || [])
-    .filter((timestamp) => now - timestamp < 10 * 60 * 1000);
-  if (recent.length >= 20) return;
+    .filter((timestamp) => now - timestamp < 60 * 1000);
+  if (recent.length >= 60) return;
   recent.push(now);
   browserEventTimes.set(browser, recent);
 
-  const report = createBlockedPromptEvent(
-    result.action === 'block' ? result : { ...result, action: 'block' },
+  const report = createPromptSubmissionEvent(
+    result,
     hostname,
+    actionTaken,
+    warningResponse,
   );
   if (report) {
     void reportDesktopEvent({
       ...report,
+      redactedPreview: store.get('policy')?.redactedPromptLoggingEnabled === true ? report.redactedPreview : undefined,
       deviceId: store.get('deviceId'),
     });
   }

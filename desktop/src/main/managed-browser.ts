@@ -37,7 +37,12 @@ type ManagedBrowserOptions = {
   browser: ManagedBrowserKind;
   profileRoot: string;
   scanner: PromptSecurityEngine;
-  onBlocked: (result: PromptScanResult, hostname: string) => void;
+  onSubmission: (
+    result: PromptScanResult,
+    hostname: string,
+    actionTaken: 'allow' | 'warn' | 'block',
+    warningResponse?: 'proceeded' | 'dismissed',
+  ) => void;
 };
 
 const CDP_REQUEST_TIMEOUT_MS = 15_000;
@@ -258,7 +263,7 @@ export class ManagedBrowserSession {
   private readonly browser: ManagedBrowserKind;
   private readonly profilePath: string;
   private readonly scanner: PromptSecurityEngine;
-  private readonly onBlocked: ManagedBrowserOptions['onBlocked'];
+  private readonly onSubmission: ManagedBrowserOptions['onSubmission'];
   private connection: CdpConnection | null = null;
   private process: ChildProcess | null = null;
   private readonly targets = new Map<string, PageTarget>();
@@ -268,7 +273,7 @@ export class ManagedBrowserSession {
     this.browser = options.browser;
     this.profilePath = profilePath;
     this.scanner = options.scanner;
-    this.onBlocked = options.onBlocked;
+    this.onSubmission = options.onSubmission;
   }
 
   public static async launch(options: ManagedBrowserOptions): Promise<ManagedBrowserSession> {
@@ -436,6 +441,7 @@ export class ManagedBrowserSession {
     const result = this.scanner.scan(scanText);
     if (!result.hasRisk || result.action === 'allow') {
       await connection.send('Fetch.continueRequest', { requestId }, sessionId).catch(() => undefined);
+      await this.reportSubmission(result, request.url, 'allow');
       return;
     }
 
@@ -453,27 +459,33 @@ export class ManagedBrowserSession {
       });
       if (response.response === 1) {
         await connection.send('Fetch.continueRequest', { requestId }, sessionId).catch(() => undefined);
+        await this.reportSubmission(result, request.url, 'warn', 'proceeded');
       } else {
         await connection.send('Fetch.failRequest', { requestId, errorReason: 'BlockedByClient' }, sessionId).catch(() => undefined);
-        await this.reportBlocked(result, request.url);
+        await this.reportSubmission(result, request.url, 'block', 'dismissed');
         await this.showProtectionNotice(sessionId, 'Krypton stopped this submission after your confirmation.');
       }
       return;
     }
 
     await connection.send('Fetch.failRequest', { requestId, errorReason: 'BlockedByClient' }, sessionId).catch(() => undefined);
-    await this.reportBlocked(result, request.url);
+    await this.reportSubmission(result, request.url, 'block');
     await this.showProtectionNotice(
       sessionId,
       `Krypton blocked this submission: ${result.matches.slice(0, 3).map((match) => match.ruleName).join(', ')}`,
     );
   }
 
-  private async reportBlocked(result: PromptScanResult, requestUrl: string): Promise<void> {
+  private async reportSubmission(
+    result: PromptScanResult,
+    requestUrl: string,
+    actionTaken: 'allow' | 'warn' | 'block',
+    warningResponse?: 'proceeded' | 'dismissed',
+  ): Promise<void> {
     try {
-      this.onBlocked(result, new URL(requestUrl).hostname);
+      this.onSubmission(result, new URL(requestUrl).hostname, actionTaken, warningResponse);
     } catch (error) {
-      console.error('[ProtectedBrowser] Could not report blocked submission metadata:', error);
+      console.error('[ProtectedBrowser] Could not report AI submission metadata:', error);
     }
   }
 

@@ -13,6 +13,9 @@ export interface ISecurityEvent extends Document {
   ruleCode: string;
   ruleName: string;
   category: DetectionCategory;
+  inputType?: 'text' | 'file';
+  fileCount?: number;
+  fileTypes?: string[];
   actionTaken: EnforcementAction;
   redactedPreview: string;
   explanation: string;
@@ -63,6 +66,9 @@ const SecurityEventSchema = new Schema<ISecurityEvent>(
       required: true,
       index: true,
     },
+    inputType: { type: String, enum: ['text', 'file'] },
+    fileCount: { type: Number, min: 1, max: 10 },
+    fileTypes: { type: [String], default: undefined },
     actionTaken: {
       type: String,
       enum: ['allow', 'warn', 'block'],

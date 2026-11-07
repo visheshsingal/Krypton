@@ -209,12 +209,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         hostname: siteHost,
         riskLevel: event.riskLevel,
         actionTaken: event.actionTaken,
+        warningResponse: event.warningResponse,
         ruleCode: event.ruleCode,
         ruleName: event.ruleName,
         category: event.category,
         explanation: event.explanation,
-        ...(state.policy?.redactedPromptLoggingEnabled === true &&
-          typeof event.redactedPreview === 'string'
+        ...(event.inputType === 'file'
+          ? {
+              inputType: 'file',
+              fileCount: event.fileCount,
+              fileTypes: event.fileTypes,
+            }
+          : {}),
+        ...(typeof event.redactedPreview === 'string' && event.redactedPreview.trim().length > 0
           ? { redactedPreview: event.redactedPreview }
           : {}),
       });

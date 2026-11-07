@@ -3,8 +3,8 @@
   "version": "1.0.2",
   "packageName": "krypton-browser-extension.zip",
   "downloadUrl": "/downloads/krypton-browser-extension.zip",
-  "fileSizeBytes": 9743,
-  "sha256Checksum": "5061a2695321605f2f045d1bd2a80fa8d59b199deaadff2d47d65fb7bf472de4",
+  "fileSizeBytes": 22677088,
+  "sha256Checksum": "78b613022ca4c7f86f7bb587e2ac9ebdff5b95c1a91148c0bfdddbb23eccb4cd",
   "distribution": "development-or-managed-installation",
   "storePublished": false
 }

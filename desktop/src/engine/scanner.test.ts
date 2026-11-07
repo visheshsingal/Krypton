@@ -99,10 +99,9 @@ describe('AI Prompt Security Engine - Local Deterministic Scanner', () => {
 
   test.each([
     ['email address', 'Contact test@example.com about the sample request.', 'PII_EMAIL'],
-    ['labeled phone number', 'Phone: +1 (202) 555-0147', 'PII_PHONE'],
-    ['labeled date of birth', 'DOB: 1990-04-15', 'PII_DATE_OF_BIRTH'],
-    ['labeled street address', 'Home address: 123 Example Street', 'PII_POSTAL_ADDRESS'],
-    ['labeled bank account number', 'Bank account: 12345678', 'PII_BANK_ACCOUNT'],
+    ['phone number in a sentence', 'My phone number is +1 (202) 555-0147.', 'PII_PHONE'],
+    ['birth date in a sentence', 'Their date of birth is 1990-04-15.', 'PII_DATE_OF_BIRTH'],
+    ['street address in a sentence', 'Their home address is 123 Example Street.', 'PII_POSTAL_ADDRESS'],
   ])('warns for medium-risk %s instead of blocking', (_label, prompt, ruleCode) => {
     const result = new PromptSecurityEngine().scan(prompt);
 
@@ -110,5 +109,41 @@ describe('AI Prompt Security Engine - Local Deterministic Scanner', () => {
     expect(result.highestRisk).toBe('MEDIUM');
     expect(result.action).toBe('warn');
     expect(result.matches.map((match) => match.ruleCode)).toContain(ruleCode);
+  });
+
+  test.each([
+    'My account number is this 6465745724872. Write me an email about it.',
+    'Please email the bank account: 6465745724872',
+    'My account no. is 6465 7457 2487 2; can you format this?',
+    'Send a note about acct # 6465-7457-2487-2.',
+    'The a/c number is 6465745724872',
+  ])('blocks and redacts conversational bank account details: %s', (prompt) => {
+    const result = new PromptSecurityEngine().scan(prompt);
+
+    expect(result.hasRisk).toBe(true);
+    expect(result.highestRisk).toBe('HIGH');
+    expect(result.action).toBe('block');
+    expect(result.matches.map((match) => match.ruleCode)).toContain('PII_BANK_ACCOUNT');
+    expect(result.redactedPrompt).not.toContain('6465745724872');
+    expect(result.redactedPrompt).not.toContain('6465 7457 2487 2');
+  });
+
+  test.each([
+    'The order reference is 6465745724872; please check its status.',
+    'Generate a report for the 123456789012 batch.',
+    'What is the result of 6465745724872 divided by 2?',
+  ])('does not block an unlabelled number without account context: %s', (prompt) => {
+    const result = new PromptSecurityEngine().scan(prompt);
+    expect(result.hasRisk).toBe(false);
+    expect(result.action).toBe('allow');
+  });
+
+  test('detects a payment card number when written with spaces', () => {
+    const prompt = 'Please use this card number: 4111 1111 1111 1111';
+    const result = new PromptSecurityEngine().scan(prompt);
+
+    expect(result.action).toBe('block');
+    expect(result.matches.map((match) => match.ruleCode)).toContain('PII_CREDIT_CARD');
+    expect(result.redactedPrompt).not.toContain('4111 1111 1111 1111');
   });
 });

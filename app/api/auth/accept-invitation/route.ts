@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
 
     await Membership.findOneAndUpdate(
       { userId: user._id, companyId: company._id },
-      { role: invitation.role, status: 'active', hasSeat: false },
+      { role: invitation.role, status: 'active', hasSeat: user.hasLicenseSeat },
       { upsert: true }
     );
 

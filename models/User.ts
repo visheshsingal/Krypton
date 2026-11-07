@@ -14,6 +14,10 @@ export interface IUser extends Document {
   name: string;
   role: 'super_admin' | 'company_admin' | 'employee';
   companyId?: mongoose.Types.ObjectId;
+  phone?: string;
+  department?: string;
+  designation?: string;
+  systemId?: string;
   isActive: boolean;
   hasLicenseSeat: boolean;
   refreshTokens: IRefreshToken[];
@@ -55,6 +59,10 @@ const UserSchema = new Schema<IUser>(
       ref: 'Company',
       index: true,
     },
+    phone: { type: String, trim: true },
+    department: { type: String, trim: true },
+    designation: { type: String, trim: true },
+    systemId: { type: String, trim: true, index: true },
     isActive: { type: Boolean, default: true, index: true },
     hasLicenseSeat: { type: Boolean, default: false, index: true },
     refreshTokens: [RefreshTokenSchema],

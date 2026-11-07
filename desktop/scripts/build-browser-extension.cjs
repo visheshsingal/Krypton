@@ -10,6 +10,48 @@ const downloadsDir = path.resolve(desktopRoot, '../public/downloads');
 const zipPath = path.join(downloadsDir, 'krypton-browser-extension.zip');
 const localBuild = process.argv.includes('--local');
 const localOutputDir = path.join(extensionRoot, '.local-build');
+const ocrCoreFiles = [
+  'tesseract-core.wasm.js',
+  'tesseract-core.wasm',
+  'tesseract-core-simd.wasm.js',
+  'tesseract-core-simd.wasm',
+  'tesseract-core-lstm.wasm.js',
+  'tesseract-core-lstm.wasm',
+  'tesseract-core-simd-lstm.wasm.js',
+  'tesseract-core-simd-lstm.wasm',
+];
+
+function copyLocalScanningAssets() {
+  const copy = (source, destination) => {
+    if (!fs.existsSync(source)) throw new Error(`Missing local scanning asset: ${source}`);
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.copyFileSync(source, destination);
+  };
+  const nodeModules = path.join(desktopRoot, 'node_modules');
+  copy(
+    path.join(nodeModules, 'pdfjs-dist/legacy/build/pdf.worker.min.mjs'),
+    path.join(stageDir, 'pdf.worker.min.mjs'),
+  );
+  copy(
+    path.join(nodeModules, 'tesseract.js/dist/worker.min.js'),
+    path.join(stageDir, 'tesseract-worker.min.js'),
+  );
+  const coreDirectory = path.join(nodeModules, 'tesseract.js-core');
+  for (const file of ocrCoreFiles) {
+    copy(path.join(coreDirectory, file), path.join(stageDir, 'tesseract-core', file));
+  }
+
+  const languageRoot = path.join(nodeModules, '@tesseract.js-data/eng');
+  const languageDirectory = fs.readdirSync(languageRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => path.join(languageRoot, entry.name))
+    .find((directory) => fs.existsSync(path.join(directory, 'eng.traineddata.gz')));
+  if (!languageDirectory) throw new Error('Missing local English OCR trained data.');
+  copy(
+    path.join(languageDirectory, 'eng.traineddata.gz'),
+    path.join(stageDir, 'tessdata/eng.traineddata.gz'),
+  );
+}
 
 async function buildExtension() {
   const { ZipArchive } = await import('archiver');
@@ -43,6 +85,7 @@ async function buildExtension() {
   fs.copyFileSync(path.join(extensionRoot, 'popup.html'), path.join(stageDir, 'popup.html'));
   fs.copyFileSync(path.join(extensionRoot, 'popup.js'), path.join(stageDir, 'popup.js'));
 
+  copyLocalScanningAssets();
   await build({
     entryPoints: [path.join(extensionRoot, 'src/content.ts')],
     outfile: path.join(stageDir, 'content.js'),

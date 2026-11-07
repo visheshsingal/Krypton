@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
         maxDevicesPerUser: 2,
         offlineGracePeriodHours: 72,
         fullPromptLoggingEnabled: false,
-        redactedPromptLoggingEnabled: false,
+        redactedPromptLoggingEnabled: true,
         customRules: [],
       });
     }

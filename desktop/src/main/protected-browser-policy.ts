@@ -31,7 +31,7 @@ export function createBlockedPromptEvent(
   hostname: string,
   timestamp = new Date().toISOString(),
 ) {
-  if (!result.hasRisk || result.action !== 'block' || result.matches.length === 0) return null;
+  if (!result.hasRisk || (result.action !== 'block' && result.action !== 'warn') || result.matches.length === 0) return null;
 
   const primaryMatch = result.matches[0];
   if (!allowedCategories.has(primaryMatch.category)) return null;
@@ -42,10 +42,48 @@ export function createBlockedPromptEvent(
     ruleCode: primaryMatch.ruleCode.slice(0, 100),
     ruleName: primaryMatch.ruleName.slice(0, 200),
     category: primaryMatch.category,
-    actionTaken: 'block' as const,
-    redactedPreview: '[Prompt withheld; sensitive content blocked locally]',
+    actionTaken: result.action === 'warn' ? ('warn' as const) : ('block' as const),
+    redactedPreview: (result.redactedPrompt || '[Prompt text unavailable]').slice(0, 4000),
     explanation: primaryMatch.explanation.slice(0, 1000),
     timestamp,
+  };
+}
+
+export function createPromptSubmissionEvent(
+  result: PromptScanResult,
+  hostname: string,
+  actionTaken: 'allow' | 'warn' | 'block',
+  warningResponse?: 'proceeded' | 'dismissed',
+  timestamp = new Date().toISOString(),
+): {
+  targetApp: string;
+  riskLevel: PromptScanResult['highestRisk'];
+  ruleCode: string;
+  ruleName: string;
+  timestamp: string;
+  eventType: 'prompt_submission';
+  actionTaken: 'allow' | 'warn' | 'block';
+  warningResponse?: 'proceeded' | 'dismissed';
+  category?: string;
+  redactedPreview?: string;
+  explanation?: string;
+} {
+  const blockedEvent = actionTaken === 'allow'
+    ? null
+    : createBlockedPromptEvent({ ...result, action: actionTaken }, hostname, timestamp);
+
+  return {
+    ...(blockedEvent || {
+      targetApp: `${hostname} (Krypton Managed Browser)`.slice(0, 100),
+      riskLevel: result.highestRisk,
+      ruleCode: 'PROMPT_SUBMISSION',
+      ruleName: 'AI submission',
+      actionTaken: 'allow' as const,
+      timestamp,
+    }),
+    eventType: 'prompt_submission' as const,
+    actionTaken,
+    ...(warningResponse ? { warningResponse } : {}),
   };
 }
 

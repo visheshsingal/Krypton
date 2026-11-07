@@ -22,9 +22,21 @@ import {
   Building,
   UserCheck,
   UserX,
+  Award,
+  Activity,
+  TrendingUp,
   Search,
   Filter,
+  Key,
+  Upload,
+  FileSpreadsheet,
+  Copy,
+  Check,
+  Edit2,
+  Info,
+  ExternalLink,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 export default function CompanyDashboard() {
   const router = useRouter();
@@ -38,7 +50,9 @@ export default function CompanyDashboard() {
   const [usbEvents, setUsbEvents] = useState<any[]>([]);
   const [usbMonitoredDevices, setUsbMonitoredDevices] = useState<any[]>([]);
   const [analytics, setAnalytics] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'employees' | 'devices' | 'incidents' | 'usb'>('overview');
+  const [aiSafety, setAiSafety] = useState<any>(null);
+  const [aiSafetySearch, setAiSafetySearch] = useState('');
+  const [activeTab, setActiveTab] = useState<'overview' | 'employees' | 'ai-safety' | 'license' | 'devices' | 'incidents' | 'usb'>('overview');
   const [policySaveError, setPolicySaveError] = useState<string | null>(null);
 
   // Filter state for incidents
@@ -46,16 +60,41 @@ export default function CompanyDashboard() {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [actionFilter, setActionFilter] = useState<string>('');
   const [teamSearch, setTeamSearch] = useState('');
+  const [selectedDepartment, setSelectedDepartment] = useState('');
+  const [seatFilter, setSeatFilter] = useState<'all' | 'licensed' | 'unassigned'>('all');
   const [deviceSearch, setDeviceSearch] = useState('');
   const [usbSearch, setUsbSearch] = useState('');
   const [usbEventFilter, setUsbEventFilter] = useState('');
 
-  // Invite Modal
+  // License state
+  const [copiedLicense, setCopiedLicense] = useState(false);
+
+  // Excel / CSV Import Modal State
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importPreviewRows, setImportPreviewRows] = useState<any[]>([]);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importMessage, setImportMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Single Add / Invite Modal State
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteName, setInviteName] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
+  const [invitePhone, setInvitePhone] = useState('');
+  const [inviteDept, setInviteDept] = useState('');
+  const [inviteDesignation, setInviteDesignation] = useState('');
+  const [inviteSystemId, setInviteSystemId] = useState('');
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteMessage, setInviteMessage] = useState<string | null>(null);
+
+  // Edit Employee Modal State
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingEmployee, setEditingEmployee] = useState<any>(null);
+  const [editLoading, setEditLoading] = useState(false);
+  const [seatAssignmentEmployee, setSeatAssignmentEmployee] = useState<any>(null);
+  const [seatAssignmentPassword, setSeatAssignmentPassword] = useState('');
+  const [seatAssignmentPasswordConfirm, setSeatAssignmentPasswordConfirm] = useState('');
+  const [seatAssignmentError, setSeatAssignmentError] = useState<string | null>(null);
+  const [seatAssignmentLoading, setSeatAssignmentLoading] = useState(false);
 
   const [newRuleCode, setNewRuleCode] = useState('');
   const [newRuleName, setNewRuleName] = useState('');
@@ -90,7 +129,7 @@ export default function CompanyDashboard() {
     try {
       const headers = { Authorization: `Bearer ${token}` };
 
-      const [resOverview, resEmp, resDev, resPol, resEvt, resAna, resUsb] = await Promise.all([
+      const [resOverview, resEmp, resDev, resPol, resEvt, resAna, resUsb, resAiSafety] = await Promise.all([
         fetch('/api/company/overview', { headers }),
         fetch('/api/company/employees', { headers }),
         fetch('/api/company/devices', { headers }),
@@ -98,6 +137,7 @@ export default function CompanyDashboard() {
         fetch('/api/company/events', { headers }),
         fetch('/api/company/analytics', { headers }),
         fetch('/api/company/usb-events', { headers }),
+        fetch('/api/company/ai-safety', { headers }),
       ]);
 
       if (resOverview.ok) setCompanyData(await resOverview.json());
@@ -126,10 +166,350 @@ export default function CompanyDashboard() {
         setUsbEvents(data.events || []);
         setUsbMonitoredDevices(data.monitoredDevices || []);
       }
+      if (resAiSafety.ok) setAiSafety(await resAiSafety.json());
     } catch (err) {
       console.error('Failed to load company data:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCopyLicense = (key?: string) => {
+    if (!key) return;
+    navigator.clipboard.writeText(key);
+    setCopiedLicense(true);
+    setTimeout(() => setCopiedLicense(false), 2000);
+  };
+
+  const downloadSampleEmployeeTemplate = () => {
+    const sampleRows = [
+      {
+        'Name': 'Rahul Sharma',
+        'Email': 'rahul.sharma@company.com',
+        'Contact Number': '9876543210',
+        'Department': 'IT',
+        'Designation': 'Software Developer',
+        'System ID': 'SYS-001',
+      },
+      {
+        'Name': 'Priya Verma',
+        'Email': 'priya.verma@company.com',
+        'Contact Number': '9876543211',
+        'Department': 'HR',
+        'Designation': 'HR Executive',
+        'System ID': 'SYS-002',
+      },
+      {
+        'Name': 'Aman Gupta',
+        'Email': 'aman.gupta@company.com',
+        'Contact Number': '9876543212',
+        'Department': 'Finance',
+        'Designation': 'Financial Analyst',
+        'System ID': 'SYS-003',
+      },
+      {
+        'Name': 'Neha Singh',
+        'Email': 'neha.singh@company.com',
+        'Contact Number': '9876543213',
+        'Department': 'Sales',
+        'Designation': 'Sales Manager',
+        'System ID': 'SYS-004',
+      },
+      {
+        'Name': 'Arjun Mehta',
+        'Email': 'arjun.mehta@company.com',
+        'Contact Number': '9876543214',
+        'Department': 'IT',
+        'Designation': 'System Administrator',
+        'System ID': 'SYS-005',
+      },
+    ];
+
+    const worksheet = XLSX.utils.json_to_sheet(sampleRows);
+    worksheet['!cols'] = [
+      { wch: 18 },
+      { wch: 28 },
+      { wch: 16 },
+      { wch: 14 },
+      { wch: 24 },
+      { wch: 14 },
+    ];
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Employee Data');
+    XLSX.writeFile(workbook, 'krypton_employee_data_template.xlsx');
+  };
+
+  const exportEmployeesToExcel = () => {
+    if (employees.length === 0) {
+      alert('No employee data available to export.');
+      return;
+    }
+    const exportData = employees.map((emp) => ({
+      'Name': emp.name || '',
+      'Email': emp.email || '',
+      'Contact Number': emp.phone || '',
+      'Department': emp.department || '',
+      'Designation': emp.designation || '',
+      'System ID': emp.systemId || '',
+      'Seat Status': emp.hasSeat ? 'Licensed' : 'Unassigned',
+      'Active Devices': emp.deviceCount || 0,
+      'Account Status': emp.isActive ? 'Active' : 'Deactivated',
+      'Joined Date': emp.joinedAt ? new Date(emp.joinedAt).toLocaleDateString() : '',
+    }));
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Employees');
+    XLSX.writeFile(workbook, `krypton_employee_directory_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
+  const handleExcelFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const buffer = evt.target?.result as ArrayBuffer;
+        const workbook = XLSX.read(new Uint8Array(buffer), { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const rawJson: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+
+        if (rawJson.length === 0) {
+          alert('The uploaded spreadsheet contains no data rows.');
+          return;
+        }
+
+        const mapped = rawJson.map((row, idx) => {
+          const name = String(row['Name'] || row['name'] || row['Full Name'] || row['Employee Name'] || '').trim();
+          const email = String(row['Email'] || row['email'] || row['Email Address'] || '').trim().toLowerCase();
+          const phone = String(row['Contact Number'] || row['contactNumber'] || row['Contact'] || row['Phone'] || row['Mobile'] || '').trim();
+          const department = String(row['Department'] || row['department'] || row['Dept'] || '').trim();
+          const designation = String(row['Designation'] || row['designation'] || row['Role'] || row['Title'] || '').trim();
+          const systemId = String(row['System ID'] || row['systemId'] || row['SystemId'] || row['Emp ID'] || '').trim();
+          const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+          return {
+            rowNum: idx + 1,
+            name: name || (email ? email.split('@')[0] : `Employee ${idx + 1}`),
+            email,
+            phone,
+            department,
+            designation,
+            systemId,
+            isValid: isValidEmail,
+          };
+        });
+
+        const rowsByEmail = new Map<string, typeof mapped[number]>();
+        for (const row of mapped) {
+          if (!row.isValid) continue;
+          rowsByEmail.set(row.email, row);
+        }
+        const uniqueRows = [
+          ...Array.from(rowsByEmail.values()),
+          ...mapped.filter((row) => !row.isValid),
+        ].sort((a, b) => a.rowNum - b.rowNum);
+
+        setImportPreviewRows(uniqueRows);
+        setImportMessage(null);
+        setShowImportModal(true);
+      } catch (err: any) {
+        alert('Could not parse Excel/CSV file: ' + (err.message || 'Invalid format'));
+      }
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value = '';
+  };
+
+  const handleExecuteImport = async () => {
+    if (importPreviewRows.length === 0) return;
+    const token = localStorage.getItem('krypton_token');
+    if (!token) return;
+
+    const validRows = importPreviewRows.filter((r) => r.isValid);
+    if (validRows.length === 0) {
+      setImportMessage({ type: 'error', text: 'No valid rows found to import. Please check email addresses.' });
+      return;
+    }
+
+    setIsImporting(true);
+    setImportMessage(null);
+
+    try {
+      const res = await fetch('/api/company/employees/import', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          employees: validRows.map((r) => ({
+            name: r.name,
+            email: r.email,
+            phone: r.phone,
+            department: r.department,
+            designation: r.designation,
+            systemId: r.systemId,
+            assignLicense: false,
+          })),
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Bulk import failed');
+      }
+
+      setImportMessage({
+        type: 'success',
+        text: `Roster saved: ${data.summary?.created || 0} added, ${data.summary?.updated || 0} updated. No seats were assigned; select licensed employees in the directory.`,
+      });
+
+      fetchCompanyData(token);
+      setTimeout(() => {
+        setShowImportModal(false);
+        setImportPreviewRows([]);
+        setImportMessage(null);
+      }, 2000);
+    } catch (err: any) {
+      setImportMessage({ type: 'error', text: err.message || 'Error executing import' });
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const handleToggleSeat = async (userId: string, currentSeat: boolean) => {
+    if (!currentSeat) {
+      const employee = employees.find((item) => item.userId === userId);
+      if (!employee) return;
+      setSeatAssignmentEmployee(employee);
+      setSeatAssignmentPassword('');
+      setSeatAssignmentPasswordConfirm('');
+      setSeatAssignmentError(null);
+      return;
+    }
+
+    const token = localStorage.getItem('krypton_token');
+    if (!token) return;
+
+    try {
+      const res = await fetch(`/api/company/employees/${userId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ hasLicenseSeat: !currentSeat }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Failed to update license seat');
+        return;
+      }
+      fetchCompanyData(token);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleAssignSeatWithPassword = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!seatAssignmentEmployee) return;
+    if (seatAssignmentPassword.length < 12) {
+      setSeatAssignmentError('Use a unique password with at least 12 characters.');
+      return;
+    }
+    if (seatAssignmentPassword.toLowerCase() === seatAssignmentEmployee.email.toLowerCase()) {
+      setSeatAssignmentError('The password cannot be the employee email address.');
+      return;
+    }
+    if (seatAssignmentPassword !== seatAssignmentPasswordConfirm) {
+      setSeatAssignmentError('The passwords do not match.');
+      return;
+    }
+
+    const token = localStorage.getItem('krypton_token');
+    if (!token) {
+      setSeatAssignmentError('Please sign in again before assigning a license seat.');
+      return;
+    }
+
+    setSeatAssignmentLoading(true);
+    setSeatAssignmentError(null);
+    try {
+      const response = await fetch(`/api/company/employees/${seatAssignmentEmployee.userId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          hasLicenseSeat: true,
+          password: seatAssignmentPassword,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Could not assign this license seat.');
+      setSeatAssignmentEmployee(null);
+      setSeatAssignmentPassword('');
+      setSeatAssignmentPasswordConfirm('');
+      await fetchCompanyData(token);
+    } catch (error) {
+      setSeatAssignmentError(error instanceof Error ? error.message : 'Could not assign this license seat.');
+    } finally {
+      setSeatAssignmentLoading(false);
+    }
+  };
+
+  const handleOpenEdit = (emp: any) => {
+    setEditingEmployee({
+      userId: emp.userId,
+      name: emp.name || '',
+      email: emp.email || '',
+      phone: emp.phone || '',
+      department: emp.department || '',
+      designation: emp.designation || '',
+      systemId: emp.systemId || '',
+    });
+    setShowEditModal(true);
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingEmployee) return;
+    const token = localStorage.getItem('krypton_token');
+    if (!token) return;
+
+    setEditLoading(true);
+    try {
+      const res = await fetch(`/api/company/employees/${editingEmployee.userId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: editingEmployee.name,
+          phone: editingEmployee.phone,
+          department: editingEmployee.department,
+          designation: editingEmployee.designation,
+          systemId: editingEmployee.systemId,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Could not update employee details');
+        return;
+      }
+      setShowEditModal(false);
+      setEditingEmployee(null);
+      fetchCompanyData(token);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setEditLoading(false);
     }
   };
 
@@ -151,16 +531,24 @@ export default function CompanyDashboard() {
         body: JSON.stringify({
           name: inviteName,
           email: inviteEmail,
-          assignLicense: true,
+          phone: invitePhone,
+          department: inviteDept,
+          designation: inviteDesignation,
+          systemId: inviteSystemId,
+          assignLicense: false,
         }),
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Invitation failed');
+      if (!res.ok) throw new Error(data.error || 'Action failed');
 
-      setInviteMessage(`Invitation sent to ${inviteEmail}`);
+      setInviteMessage(`Employee ${inviteName} added successfully!`);
       setInviteName('');
       setInviteEmail('');
+      setInvitePhone('');
+      setInviteDept('');
+      setInviteDesignation('');
+      setInviteSystemId('');
       fetchCompanyData(token);
       setTimeout(() => {
         setShowInviteModal(false);
@@ -344,13 +732,16 @@ export default function CompanyDashboard() {
 
   const handleExportCSV = () => {
     if (events.length === 0) return;
-    const headers = ['Timestamp', 'Employee', 'Email', 'Device', 'Target App', 'Risk Level', 'Rule Code', 'Action', 'Redacted Snippet'];
+    const headers = ['Timestamp', 'Employee', 'Email', 'Device', 'Target App', 'Input Type', 'File Count', 'File Types', 'Risk Level', 'Rule Code', 'Action', 'Redacted Snippet'];
     const rows = events.map((e) => [
       `"${e.timestamp}"`,
       `"${e.userName}"`,
       `"${e.userEmail}"`,
       `"${e.deviceName}"`,
       `"${e.targetApp}"`,
+      `"${e.inputType || 'text'}"`,
+      `"${e.fileCount || ''}"`,
+      `"${(e.fileTypes || []).join('; ')}"`,
       `"${e.riskLevel}"`,
       `"${e.ruleCode}"`,
       `"${e.actionTaken}"`,
@@ -396,9 +787,32 @@ export default function CompanyDashboard() {
     }
     return true;
   });
-  const filteredEmployees = employees.filter((emp) =>
-    [emp.name, emp.email, emp.role].some((value) => String(value || '').toLowerCase().includes(teamSearch.toLowerCase()))
+
+  const availableDepartments = Array.from(
+    new Set(employees.map((e) => (e.department || '').trim()).filter(Boolean))
+  ) as string[];
+  const aiSafetyByUser = new Map<string, any>(
+    (aiSafety?.employees || []).map((employee: any) => [String(employee.userId), employee] as [string, any]),
   );
+  const filteredAiSafetyEmployees = (aiSafety?.employees || []).filter((employee: any) => {
+    const term = aiSafetySearch.trim().toLowerCase();
+    return !term || [employee.name, employee.email, employee.department]
+      .some((value) => String(value || '').toLowerCase().includes(term));
+  }).sort((left: any, right: any) =>
+    (left.rank ?? Number.MAX_SAFE_INTEGER) - (right.rank ?? Number.MAX_SAFE_INTEGER),
+  );
+
+  const filteredEmployees = employees.filter((emp) => {
+    if (selectedDepartment && (emp.department || '').toLowerCase() !== selectedDepartment.toLowerCase()) {
+      return false;
+    }
+    if (seatFilter === 'licensed' && !emp.hasSeat) return false;
+    if (seatFilter === 'unassigned' && emp.hasSeat) return false;
+    if (!teamSearch.trim()) return true;
+    const term = teamSearch.toLowerCase().trim();
+    return [emp.name, emp.email, emp.role, emp.phone, emp.department, emp.designation, emp.systemId]
+      .some((value) => String(value || '').toLowerCase().includes(term));
+  });
   const filteredDevices = devices.filter((dev) =>
     [dev.deviceName, dev.user?.name, dev.user?.email, dev.extension?.browser]
       .some((value) => String(value || '').toLowerCase().includes(deviceSearch.toLowerCase()))
@@ -479,7 +893,9 @@ export default function CompanyDashboard() {
           <nav aria-label="Company dashboard" className="flex gap-1 overflow-x-auto p-2 sm:px-4 md:block md:space-y-1 md:px-3 md:pb-5 md:pt-1">
             {([
               { id: 'overview', label: 'Overview', icon: Shield },
-              { id: 'employees', label: 'Team', icon: Users },
+              { id: 'employees', label: 'Employee Directory', icon: Users },
+              { id: 'ai-safety', label: 'AI safety scores', icon: Award },
+              { id: 'license', label: 'Company License', icon: Key },
               { id: 'devices', label: 'Devices', icon: Laptop },
               { id: 'incidents', label: 'Activity', icon: AlertTriangle },
               { id: 'usb', label: 'USB activity', icon: HardDrive },
@@ -510,6 +926,60 @@ export default function CompanyDashboard() {
               <div>
                 <h1 className="text-2xl font-semibold tracking-tight text-white">Overview</h1>
                 <p className="mt-1 text-sm text-slate-400">A quick look at your team’s protection and license usage.</p>
+              </div>
+
+              {/* Company License Key Hero Banner */}
+              <div className="relative overflow-hidden rounded-2xl border border-sky-500/30 bg-gradient-to-r from-sky-950/40 via-slate-900/60 to-indigo-950/40 p-5 sm:p-6 backdrop-blur">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-sky-400/10 text-sky-300">
+                        <Key className="h-4 w-4" />
+                      </div>
+                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-300">Company License Key</span>
+                      <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-400 border border-emerald-500/30">
+                        {license?.status || 'Active'}
+                      </span>
+                      <span className="rounded-full bg-sky-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-sky-300 border border-sky-500/30">
+                        {license?.plan || 'Corporate'} Plan
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="font-mono text-xl sm:text-2xl font-bold tracking-wider text-white select-all">
+                        {license?.licenseKey || 'No License Key Assigned'}
+                      </div>
+                      {license?.licenseKey && (
+                        <button
+                          onClick={() => handleCopyLicense(license.licenseKey)}
+                          className="flex items-center gap-1.5 rounded-lg border border-sky-400/30 bg-sky-500/15 px-3 py-1.5 text-xs font-medium text-sky-300 transition hover:bg-sky-500/25 active:scale-95"
+                        >
+                          {copiedLicense ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                          <span>{copiedLicense ? 'Copied to Clipboard!' : 'Copy Key'}</span>
+                        </button>
+                      )}
+                    </div>
+
+                    <p className="text-xs text-slate-400">
+                      Employees use this license key along with their corporate email to activate desktop DLP and browser extension protection.
+                    </p>
+                  </div>
+
+                  <div className="shrink-0 flex sm:flex-col items-center sm:items-end justify-between border-t border-slate-800/80 pt-3 md:border-0 md:pt-0">
+                    <button
+                      onClick={() => setActiveTab('license')}
+                      className="flex items-center gap-1.5 rounded-xl bg-sky-400 px-4 py-2 text-xs font-semibold text-slate-950 transition hover:bg-sky-300"
+                    >
+                      <Key className="h-3.5 w-3.5" />
+                      <span>Manage License & Activation</span>
+                    </button>
+                    {license?.expiresAt && (
+                      <span className="mt-2 text-[11px] text-slate-500">
+                        Renews / expires {new Date(license.expiresAt).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div className="rounded-2xl border border-slate-800/80 bg-[#0b1220] p-5 sm:p-6 space-y-5">
@@ -637,8 +1107,13 @@ export default function CompanyDashboard() {
                             <span className="truncate font-medium text-slate-200">{evt.userName}</span>
                             <span className="text-slate-500">{evt.targetApp}</span>
                           </div>
-                          <div className="truncate text-xs text-slate-500">
-                            {evt.ruleName}{evt.redactedPreview?.startsWith('[Prompt withheld') ? '' : ` · ${evt.redactedPreview}`}
+                          <div className="truncate text-xs text-slate-400">
+                            <span className="font-medium text-slate-300">{evt.ruleName}</span>
+                            {evt.redactedPreview && !evt.redactedPreview.startsWith('[Prompt withheld') && !evt.redactedPreview.startsWith('[Preview withheld') && (
+                              <span className="ml-1.5 font-mono text-sky-300/90">
+                                · &ldquo;{evt.redactedPreview.length > 90 ? evt.redactedPreview.slice(0, 90) + '…' : evt.redactedPreview}&rdquo;
+                              </span>
+                            )}
                           </div>
                         </div>
                         <span className="shrink-0 text-xs text-slate-500">{new Date(evt.timestamp).toLocaleString()}</span>
@@ -650,89 +1125,414 @@ export default function CompanyDashboard() {
             </div>
           )}
 
-          {/* TAB 2: EMPLOYEES */}
+          {/* TAB 2: EMPLOYEE DIRECTORY & DATA FEED */}
           {activeTab === 'employees' && (
             <div className="mx-auto max-w-6xl space-y-6">
-              <div className="flex items-center justify-between">
+              {/* Hidden Excel / CSV input */}
+              <input
+                type="file"
+                id="excel-file-input"
+                accept=".xlsx,.xls,.csv"
+                onChange={handleExcelFileSelect}
+                className="hidden"
+              />
+
+              {/* Header and Actions */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                  <h1 className="text-2xl font-semibold tracking-tight text-white">Team</h1>
+                  <h1 className="text-2xl font-semibold tracking-tight text-white flex items-center gap-2">
+                    <Users className="w-6 h-6 text-sky-400" />
+                    <span>Employee Directory</span>
+                  </h1>
                   <p className="mt-1 text-sm text-slate-400">
-                    Manage employee access and assigned seats.
+                    Import employee rosters via Excel, manage departments, designations, system IDs, and license seats.
                   </p>
                 </div>
-                <button
-                  onClick={() => setShowInviteModal(true)}
-                  className="flex items-center gap-2 rounded-lg bg-sky-400 px-3.5 py-2.5 text-xs font-semibold text-slate-950 transition hover:bg-sky-300"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Invite</span>
-                </button>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() => document.getElementById('excel-file-input')?.click()}
+                    className="flex items-center gap-1.5 rounded-xl border border-sky-400/30 bg-sky-500/15 px-3.5 py-2 text-xs font-semibold text-sky-300 transition hover:bg-sky-500/25 active:scale-95"
+                    title="Upload employee data via Excel (.xlsx) or CSV"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Import Excel / CSV</span>
+                  </button>
+
+                  <button
+                    onClick={downloadSampleEmployeeTemplate}
+                    className="flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-900/80 px-3 py-2 text-xs font-medium text-slate-300 transition hover:bg-slate-800 hover:text-white"
+                    title="Download Excel template matching standard format"
+                  >
+                    <Download className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Sample Template</span>
+                  </button>
+
+                  <button
+                    onClick={exportEmployeesToExcel}
+                    className="flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-900/80 px-3 py-2 text-xs font-medium text-slate-300 transition hover:bg-slate-800 hover:text-white"
+                    title="Export employee roster to Excel"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Export</span>
+                  </button>
+
+                  <button
+                    onClick={() => setShowInviteModal(true)}
+                    className="flex items-center gap-1.5 rounded-xl bg-sky-400 px-3.5 py-2 text-xs font-semibold text-slate-950 transition hover:bg-sky-300 active:scale-95"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Employee</span>
+                  </button>
+
+                  <details className="relative">
+                    <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-xl border border-sky-400/30 bg-slate-900/80 px-3.5 py-2 text-xs font-semibold text-sky-200 transition hover:bg-slate-800">
+                      <Plus className="h-3.5 w-3.5" />
+                      <span>Add roster details</span>
+                    </summary>
+                    <form
+                      className="absolute right-0 z-30 mt-2 w-[min(90vw,460px)] space-y-3 rounded-2xl border border-slate-700 bg-[#0b1220] p-4 shadow-2xl"
+                      onSubmit={async (event) => {
+                        event.preventDefault();
+                        const form = event.currentTarget;
+                        const formData = new FormData(form);
+                        const token = localStorage.getItem('krypton_token');
+                        if (!token) {
+                          window.alert('Please sign in again before adding employee details.');
+                          return;
+                        }
+
+                        const employee = {
+                          name: String(formData.get('name') || '').trim(),
+                          email: String(formData.get('email') || '').trim().toLowerCase(),
+                          phone: String(formData.get('phone') || '').trim(),
+                          department: String(formData.get('department') || '').trim(),
+                          designation: String(formData.get('designation') || '').trim(),
+                          systemId: String(formData.get('systemId') || '').trim(),
+                          assignLicense: false,
+                        };
+                        const statusNode = form.querySelector<HTMLElement>('[data-manual-save-status]');
+
+                        try {
+                          const response = await fetch('/api/company/employees/import', {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                              Authorization: `Bearer ${token}`,
+                            },
+                            body: JSON.stringify({ employees: [employee] }),
+                          });
+                          const result = await response.json();
+                          if (!response.ok) throw new Error(result.error || 'Could not save employee details.');
+                          const action = result.summary?.created ? 'added' : 'updated';
+                          if (statusNode) {
+                            statusNode.textContent = `Employee roster details ${action} successfully.`;
+                            statusNode.className = 'text-xs text-emerald-300';
+                          }
+                          form.reset();
+                          form.closest('details')?.removeAttribute('open');
+                          await fetchCompanyData(token);
+                        } catch (error) {
+                          if (statusNode) {
+                            statusNode.textContent = error instanceof Error ? error.message : 'Could not save employee details.';
+                            statusNode.className = 'text-xs text-rose-300';
+                          }
+                        }
+                      }}
+                    >
+                      <p className="text-sm font-semibold text-white">Add or update roster details</p>
+                      <p className="text-xs leading-5 text-slate-400">
+                        Email is the unique match. If it already exists, its roster details are updated instead of creating a duplicate.
+                      </p>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <label className="text-xs text-slate-300">
+                          Name *
+                          <input name="name" required maxLength={100} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" />
+                        </label>
+                        <label className="text-xs text-slate-300">
+                          Work email *
+                          <input name="email" type="email" required maxLength={254} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" />
+                        </label>
+                        <label className="text-xs text-slate-300">
+                          Contact number
+                          <input name="phone" maxLength={40} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" />
+                        </label>
+                        <label className="text-xs text-slate-300">
+                          Department
+                          <input name="department" maxLength={100} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" />
+                        </label>
+                        <label className="text-xs text-slate-300">
+                          Designation
+                          <input name="designation" maxLength={100} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" />
+                        </label>
+                        <label className="text-xs text-slate-300">
+                          System ID
+                          <input name="systemId" maxLength={100} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" />
+                        </label>
+                      </div>
+                      <p data-manual-save-status role="status" aria-live="polite" className="min-h-4 text-xs text-slate-400" />
+                      <button type="submit" className="w-full rounded-lg bg-sky-400 px-4 py-2.5 text-sm font-semibold text-slate-950 hover:bg-sky-300">
+                        Save roster details
+                      </button>
+                    </form>
+                  </details>
+                </div>
+              </div>
+
+              {/* Filters & Search Bar */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 rounded-2xl border border-slate-800/80 bg-[#0b1220] p-3">
+                <div className="relative flex-1 max-w-md">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                  <input
+                    value={teamSearch}
+                    onChange={(e) => setTeamSearch(e.target.value)}
+                    placeholder="Search by name, email, department, designation, system ID..."
+                    className="w-full rounded-xl border border-slate-800 bg-slate-950/70 py-2 pl-9 pr-3 text-xs text-white placeholder:text-slate-500 focus:border-sky-400 focus:outline-none"
+                  />
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Department Filter */}
+                  <select
+                    value={selectedDepartment}
+                    onChange={(e) => setSelectedDepartment(e.target.value)}
+                    className="rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-2 text-xs text-slate-300 focus:border-sky-400 focus:outline-none"
+                  >
+                    <option value="">All Departments ({employees.length})</option>
+                    {availableDepartments.map((dept) => (
+                      <option key={dept} value={dept}>
+                        {dept} ({employees.filter((e) => (e.department || '').toLowerCase() === dept.toLowerCase()).length})
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* Seat Filter */}
+                  <select
+                    value={seatFilter}
+                    onChange={(e) => setSeatFilter(e.target.value as any)}
+                    className="rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-2 text-xs text-slate-300 focus:border-sky-400 focus:outline-none"
+                  >
+                    <option value="all">All Seats ({employees.length})</option>
+                    <option value="licensed">Licensed Seats ({employees.filter((e) => e.hasSeat).length})</option>
+                    <option value="unassigned">Unassigned ({employees.filter((e) => !e.hasSeat).length})</option>
+                  </select>
+
+                  {(teamSearch || selectedDepartment || seatFilter !== 'all') && (
+                    <button
+                      onClick={() => {
+                        setTeamSearch('');
+                        setSelectedDepartment('');
+                        setSeatFilter('all');
+                      }}
+                      className="px-2.5 py-1.5 text-xs text-sky-400 hover:text-sky-300 transition"
+                    >
+                      Clear filters
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Employees Table */}
-              <div className="relative max-w-md">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-                <input value={teamSearch} onChange={(e) => setTeamSearch(e.target.value)} placeholder="Search name, email, or role" className="w-full rounded-xl border border-slate-800 bg-[#0b1220] py-2.5 pl-9 pr-3 text-sm text-white placeholder:text-slate-500 focus:border-sky-400 focus:outline-none" />
-              </div>
               <div className="overflow-x-auto rounded-2xl border border-slate-800/80 bg-[#0b1220]">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-950/80 border-b border-slate-800 text-slate-400 font-semibold">
                     <tr>
-                      <th className="p-4">Employee</th>
-                      <th className="p-4">Role</th>
-                      <th className="p-4">Seat Status</th>
-                      <th className="p-4">Active Devices</th>
-                      <th className="p-4">Joined Date</th>
+                      <th className="p-4">Name</th>
+                      <th className="p-4">Email</th>
+                      <th className="p-4">Contact Number</th>
+                      <th className="p-4">Department</th>
+                      <th className="p-4">Designation</th>
+                      <th className="p-4">System ID</th>
+                      <th className="p-4">License Seat</th>
+                      <th className="p-4">AI Safety</th>
+                      <th className="p-4">Devices</th>
                       <th className="p-4 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60">
                     {employees.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="p-10 text-center text-sm text-slate-500">
-                          No team members yet. Invite someone to get started.
+                        <td colSpan={10} className="p-12 text-center text-sm text-slate-500">
+                          <div className="max-w-md mx-auto space-y-3">
+                            <Users className="w-8 h-8 mx-auto text-slate-600" />
+                            <div className="font-semibold text-slate-300">No employees in workspace directory yet</div>
+                            <p className="text-xs text-slate-500">
+                              Upload an Excel (.xlsx / .xls) spreadsheet or invite individual employees to begin protecting workstations.
+                            </p>
+                            <div className="pt-2 flex justify-center gap-2">
+                              <button
+                                onClick={() => document.getElementById('excel-file-input')?.click()}
+                                className="px-3.5 py-2 rounded-xl bg-sky-400 text-slate-950 font-semibold text-xs transition hover:bg-sky-300"
+                              >
+                                Upload Excel File
+                              </button>
+                              <button
+                                onClick={downloadSampleEmployeeTemplate}
+                                className="px-3.5 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs hover:bg-slate-700 transition"
+                              >
+                                Download Sample Template
+                              </button>
+                            </div>
+                          </div>
                         </td>
                       </tr>
                     ) : filteredEmployees.length === 0 ? (
-                      <tr><td colSpan={6} className="p-10 text-center text-sm text-slate-500">No team members match this search.</td></tr>
-                    ) : filteredEmployees.map((emp) => (
-                      <tr key={emp.membershipId} className="text-slate-300 hover:bg-slate-800/30">
-                        <td className="p-4">
-                          <div className="font-bold text-white">{emp.name}</div>
-                          <div className="text-[11px] text-slate-500">{emp.email}</div>
-                        </td>
-                        <td className="p-4 capitalize text-slate-400 font-mono text-[11px]">{emp.role}</td>
-                        <td className="p-4">
-                          {emp.hasSeat ? (
-                            <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 text-[10px] font-bold">
-                              <CheckCircle2 className="w-3 h-3" />
-                              <span>Active Seat</span>
-                            </span>
-                          ) : (
-                            <span className="text-slate-500 text-[11px]">Unassigned</span>
-                          )}
-                        </td>
-                        <td className="p-4 font-mono text-slate-300">{emp.deviceCount} registered</td>
-                        <td className="p-4 text-slate-500 font-mono text-[11px]">
-                          {new Date(emp.joinedAt).toLocaleDateString()}
-                        </td>
-                        <td className="p-4 text-right space-x-2">
-                          <button
-                            onClick={() => handleToggleEmployeeActive(emp.userId, emp.isActive)}
-                            className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px] border border-slate-700 transition"
-                          >
-                            {emp.isActive ? 'Deactivate' : 'Activate'}
-                          </button>
-                          <button
-                            onClick={() => handleRemoveEmployee(emp.userId)}
-                            className="p-1.5 text-red-400 hover:bg-red-500/10 rounded transition"
-                            title="Remove employee & release seat"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                      <tr>
+                        <td colSpan={10} className="p-10 text-center text-sm text-slate-500">
+                          No team members match this search or filter.
                         </td>
                       </tr>
-                    ))}
+                    ) : filteredEmployees.map((emp) => {
+                      const deptLower = (emp.department || '').toLowerCase();
+                      const deptBadgeClass =
+                        deptLower.includes('it') || deptLower.includes('tech') || deptLower.includes('eng')
+                          ? 'bg-sky-500/15 text-sky-300 border-sky-500/30'
+                          : deptLower.includes('hr') || deptLower.includes('human')
+                          ? 'bg-purple-500/15 text-purple-300 border-purple-500/30'
+                          : deptLower.includes('finance') || deptLower.includes('acc')
+                          ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                          : deptLower.includes('sale') || deptLower.includes('market')
+                          ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                          : 'bg-slate-800 text-slate-300 border-slate-700';
+
+                      return (
+                        <tr key={emp.membershipId || emp.userId} className="text-slate-300 hover:bg-slate-800/30 transition">
+                          <td className="p-4">
+                            <div className="flex items-center gap-2.5">
+                              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-sky-500/10 font-bold text-sky-300 text-[11px] border border-sky-500/20">
+                                {emp.name ? emp.name.slice(0, 2).toUpperCase() : 'EM'}
+                              </div>
+                              <div>
+                                <div className="font-semibold text-white">{emp.name}</div>
+                                <div className="text-[10px] text-slate-500 font-mono capitalize">{emp.role}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="p-4 text-slate-300 font-mono text-[11px]">
+                            {emp.email}
+                          </td>
+                          <td className="p-4 text-slate-400 font-mono text-[11px]">
+                            {emp.phone || <span className="text-slate-600">—</span>}
+                          </td>
+                          <td className="p-4">
+                            {emp.department ? (
+                              <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider border ${deptBadgeClass}`}>
+                                {emp.department}
+                              </span>
+                            ) : (
+                              <span className="text-slate-600">—</span>
+                            )}
+                          </td>
+                          <td className="p-4 text-slate-300">
+                            {emp.designation || <span className="text-slate-600">—</span>}
+                          </td>
+                          <td className="p-4">
+                            {emp.systemId ? (
+                              <span className="font-mono text-[11px] font-semibold text-slate-200 bg-slate-900 border border-slate-800 px-2 py-0.5 rounded">
+                                {emp.systemId}
+                              </span>
+                            ) : (
+                              <span className="text-slate-600">—</span>
+                            )}
+                          </td>
+                          <td className="p-4">
+                            {emp.role !== 'employee' ? (
+                              <span className="text-[10px] font-medium text-slate-500">Administrator account</span>
+                            ) : emp.hasSeat ? (
+                              <div className="flex flex-col items-start gap-1">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 text-[10px] font-bold border border-emerald-500/30">
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                  <span>Licensed · login enabled</span>
+                                </span>
+                                <span className="text-[10px] text-slate-500">Username: {emp.email}</span>
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => {
+                                      setSeatAssignmentEmployee(emp);
+                                      setSeatAssignmentPassword('');
+                                      setSeatAssignmentPasswordConfirm('');
+                                      setSeatAssignmentError(null);
+                                    }}
+                                    className="text-[10px] font-medium text-sky-300 hover:text-sky-200"
+                                  >
+                                    Reset password
+                                  </button>
+                                  <button
+                                    onClick={() => handleToggleSeat(emp.userId, true)}
+                                    className="text-[10px] font-medium text-slate-500 hover:text-red-300"
+                                    title="Release seat and disable employee sign-in"
+                                  >
+                                    Release seat
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex flex-col items-start gap-1">
+                                <button
+                                  onClick={() => handleToggleSeat(emp.userId, false)}
+                                  disabled={!emp.isActive || (license?.availableSeats || 0) <= 0}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 text-[10px] font-medium border border-slate-700 hover:bg-sky-500/20 hover:text-sky-300 transition disabled:cursor-not-allowed disabled:opacity-40"
+                                  title={!emp.isActive ? 'Activate this employee before assigning a seat' : (license?.availableSeats || 0) <= 0 ? 'No seats available' : 'Set password and assign license seat'}
+                                >
+                                  <span>Assign seat + set password</span>
+                                </button>
+                                <span className="text-[10px] text-amber-300/80">No seat · sign-in disabled</span>
+                              </div>
+                            )}
+                          </td>
+                          <td className="p-4">
+                            {aiSafetyByUser.get(String(emp.userId))?.score != null ? (
+                              <div>
+                                <span className="font-semibold text-sky-200">
+                                  {aiSafetyByUser.get(String(emp.userId)).score}
+                                </span>
+                                <span className="ml-1 text-[10px] text-slate-500">/ 100</span>
+                                {aiSafetyByUser.get(String(emp.userId)).rank && (
+                                  <div className="mt-1 text-[10px] text-slate-500">
+                                    Rank #{aiSafetyByUser.get(String(emp.userId)).rank}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-[10px] text-slate-500">Not rated yet</span>
+                            )}
+                          </td>
+                          <td className="p-4 font-mono text-slate-300 text-[11px]">
+                            {emp.deviceCount > 0 ? (
+                              <span className="text-emerald-400 font-semibold">{emp.deviceCount} paired</span>
+                            ) : (
+                              <span className="text-slate-500">0 devices</span>
+                            )}
+                          </td>
+                          <td className="p-4 text-right space-x-1.5 whitespace-nowrap">
+                            <button
+                              onClick={() => handleOpenEdit(emp)}
+                              className="p-1.5 text-slate-400 hover:text-sky-300 hover:bg-slate-800 rounded transition"
+                              title="Edit details (Contact, Department, Designation, System ID)"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleToggleEmployeeActive(emp.userId, emp.isActive)}
+                              className={`px-2 py-1 rounded text-[10px] font-medium border transition ${
+                                emp.isActive
+                                  ? 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 border-slate-700'
+                                  : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border-amber-500/30'
+                              }`}
+                            >
+                              {emp.isActive ? 'Active' : 'Disabled'}
+                            </button>
+                            <button
+                              onClick={() => handleRemoveEmployee(emp.userId)}
+                              className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded transition"
+                              title="Remove employee & release seat"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -740,19 +1540,373 @@ export default function CompanyDashboard() {
               {/* Pending Invitations Table */}
               {pendingInvitations.length > 0 && (
                 <div className="rounded-2xl border border-slate-800/80 bg-[#0b1220] p-5 space-y-3">
-                  <h2 className="text-sm font-semibold text-white">Pending invitations</h2>
+                  <h2 className="text-sm font-semibold text-white">Pending invitations ({pendingInvitations.length})</h2>
                   <div className="divide-y divide-slate-800 text-xs">
                     {pendingInvitations.map((inv) => (
                       <div key={inv.id} className="py-2.5 flex items-center justify-between text-slate-400">
                         <div>
                           <span className="font-semibold text-white">{inv.name}</span> ({inv.email})
                         </div>
-                        <span className="text-amber-400 text-[11px]">Pending Acceptance</span>
+                        <span className="text-amber-400 text-[11px] font-medium">Pending Acceptance</span>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* AI SAFETY SCOREBOARD */}
+          {activeTab === 'ai-safety' && (
+            <div className="mx-auto max-w-6xl space-y-6">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Award className="h-5 w-5 text-sky-300" />
+                    <h1 className="text-2xl font-semibold tracking-tight text-white">AI safety scores</h1>
+                  </div>
+                  <p className="mt-1 text-sm text-slate-400">
+                    Recognize safe, consistent AI use and responsible responses to guidance.
+                  </p>
+                </div>
+                <span className="text-xs text-slate-500">Rolling 30-day view</span>
+              </div>
+
+              {aiSafety?.coverageLimited && (
+                <div role="status" className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-xs leading-5 text-amber-200">
+                  This workspace has high activity volume. Scores use the latest 50,000 eligible events, so rankings may be incomplete.
+                </div>
+              )}
+
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {[
+                  { label: 'Average safety score', value: aiSafety?.summary?.averageScore ?? '—', detail: 'Rated employees', icon: ShieldCheck },
+                  { label: 'Employees rated', value: aiSafety?.summary?.ratedEmployees ?? 0, detail: 'With recorded AI activity', icon: Users },
+                  { label: 'Safe AI interactions', value: aiSafety?.summary?.safeInteractions ?? 0, detail: 'Sensitive-free submissions', icon: Activity },
+                  { label: 'Warnings resolved', value: aiSafety?.summary?.warningRecoveries ?? 0, detail: 'Stopped, then safely revised', icon: TrendingUp },
+                ].map(({ label, value, detail, icon: Icon }) => (
+                  <div key={label} className="rounded-xl border border-slate-800/80 bg-[#0b1220] p-5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-slate-400">{label}</span>
+                      <Icon className="h-4 w-4 text-sky-300" />
+                    </div>
+                    <div className="mt-3 text-2xl font-semibold text-white">{value}</div>
+                    <div className="mt-1 text-[11px] text-slate-500">{detail}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.65fr)]">
+                <section className="overflow-hidden rounded-2xl border border-slate-800/80 bg-[#0b1220]">
+                  <div className="flex flex-col gap-3 border-b border-slate-800 p-5 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h2 className="text-sm font-semibold text-white">Employee leaderboard</h2>
+                      <p className="mt-1 text-xs text-slate-500">Ranked only after a recorded interaction; inactive profiles are not scored.</p>
+                    </div>
+                    <div className="relative w-full sm:max-w-xs">
+                      <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
+                      <input
+                        type="search"
+                        aria-label="Search AI safety leaderboard"
+                        value={aiSafetySearch}
+                        onChange={(event) => setAiSafetySearch(event.target.value)}
+                        placeholder="Search name or team"
+                        className="w-full rounded-lg border border-slate-700 bg-slate-950/70 py-2 pl-9 pr-3 text-xs text-white placeholder-slate-500 outline-none focus:border-sky-400"
+                      />
+                    </div>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-950/60 text-slate-500">
+                        <tr>
+                          <th className="px-5 py-3 font-medium">Rank</th>
+                          <th className="px-5 py-3 font-medium">Employee</th>
+                          <th className="px-5 py-3 font-medium">Score</th>
+                          <th className="px-5 py-3 font-medium">Safe interactions</th>
+                          <th className="px-5 py-3 font-medium">Warnings</th>
+                          <th className="px-5 py-3 font-medium">AI interactions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60">
+                        {filteredAiSafetyEmployees.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="p-10 text-center text-slate-500">
+                              {aiSafetySearch ? 'No employees match this search.' : 'No eligible employee activity recorded in the last 30 days.'}
+                            </td>
+                          </tr>
+                        ) : filteredAiSafetyEmployees.map((employee: any) => (
+                          <tr key={employee.userId} className="text-slate-300 transition hover:bg-slate-800/30">
+                            <td className="px-5 py-3.5 font-mono text-slate-500">
+                              {employee.rank ? `#${employee.rank}` : '—'}
+                            </td>
+                            <td className="px-5 py-3.5">
+                              <div className="font-medium text-white">{employee.name}</div>
+                              <div className="mt-0.5 text-[10px] text-slate-500">{employee.department} · {employee.email}</div>
+                            </td>
+                            <td className="px-5 py-3.5">
+                              {employee.score === null ? (
+                                <span className="text-slate-500">Not rated</span>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <span className={`font-semibold ${
+                                    employee.score >= 85 ? 'text-emerald-300' : employee.score >= 70 ? 'text-sky-300' : 'text-amber-300'
+                                  }`}>{employee.score}</span>
+                                  <div className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-800">
+                                    <div className="h-full rounded-full bg-sky-400" style={{ width: `${employee.score}%` }} />
+                                  </div>
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-5 py-3.5">
+                              <div>{employee.safeInteractions}</div>
+                              <div className="mt-0.5 text-[10px] text-slate-500">{employee.warningRecoveries} revised after warning</div>
+                            </td>
+                            <td className="px-5 py-3.5">
+                              <div>{employee.warnings}</div>
+                              {employee.ignoredWarnings > 0 && (
+                                <div className="mt-0.5 text-[10px] text-amber-300">{employee.ignoredWarnings} proceeded</div>
+                              )}
+                              {employee.highRiskAttempts > 0 && (
+                                <div className="mt-0.5 text-[10px] text-rose-300">{employee.highRiskAttempts} high-risk attempts</div>
+                              )}
+                            </td>
+                            <td className="px-5 py-3.5">{employee.interactions}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+
+                <section className="rounded-2xl border border-slate-800/80 bg-[#0b1220] p-5">
+                  <div className="flex items-center gap-2">
+                    <Users className="h-4 w-4 text-sky-300" />
+                    <h2 className="text-sm font-semibold text-white">Team leaderboard</h2>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">Average score across rated team members.</p>
+                  <div className="mt-5 space-y-4">
+                    {(aiSafety?.teams || []).length === 0 ? (
+                      <p className="rounded-xl border border-slate-800 bg-slate-950/50 p-4 text-xs leading-5 text-slate-500">
+                        Team rankings will appear after eligible AI activity is recorded.
+                      </p>
+                    ) : (aiSafety.teams as any[]).map((team) => (
+                      <div key={team.name}>
+                        <div className="mb-1.5 flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <span className="mr-2 font-mono text-[10px] text-slate-500">#{team.rank}</span>
+                            <span className="text-xs font-medium text-slate-200">{team.name}</span>
+                          </div>
+                          <span className="text-sm font-semibold text-sky-200">{team.score}</span>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-slate-800">
+                          <div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-sky-300" style={{ width: `${team.score}%` }} />
+                        </div>
+                        <div className="mt-1.5 flex justify-between text-[10px] text-slate-500">
+                          <span>{team.members} rated {team.members === 1 ? 'employee' : 'employees'}</span>
+                          <span>{team.safeInteractions} safe interactions</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              </div>
+
+              <section className="rounded-2xl border border-sky-500/15 bg-sky-500/[0.03] p-5">
+                <div className="flex items-start gap-3">
+                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" />
+                  <div>
+                    <h2 className="text-xs font-semibold text-slate-200">How the score works</h2>
+                    <p className="mt-1.5 max-w-4xl text-xs leading-5 text-slate-400">
+                      Scores reward safe AI use and consistent activity, add credit when a dismissed warning is followed by a clean submission on the same device within 15 minutes, and deduct points for proceeding after warnings or attempting highly sensitive data submissions. Counts cover supported Krypton browser integrations only, not every AI app or unprotected browser. Employees with no recorded activity are not ranked. This is a coaching indicator, not a performance or access-control decision. Only event metadata is used for scoring; clean prompt text is not collected. Redacted preview storage remains controlled by your Activity privacy setting.
+                    </p>
+                  </div>
+                </div>
+              </section>
+            </div>
+          )}
+
+          {/* TAB: COMPANY LICENSE & WORKSTATION ACTIVATION */}
+          {activeTab === 'license' && (
+            <div className="mx-auto max-w-6xl space-y-6">
+              <div>
+                <h1 className="text-2xl font-semibold tracking-tight text-white flex items-center gap-2">
+                  <Key className="w-6 h-6 text-sky-400" />
+                  <span>Company License & Workstation Activation</span>
+                </h1>
+                <p className="mt-1 text-sm text-slate-400">
+                  Manage your organization&apos;s master license key, seat allocations, and employee workstation activation details.
+                </p>
+              </div>
+
+              {/* Master License Key Box */}
+              <div className="rounded-2xl border border-sky-500/30 bg-gradient-to-br from-sky-950/40 via-slate-900/80 to-[#0b1220] p-6 space-y-5">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Master License Key</span>
+                      <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-400 border border-emerald-500/30">
+                        {license?.status || 'Active'}
+                      </span>
+                      <span className="rounded-full bg-sky-500/20 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-sky-300 border border-sky-500/30">
+                        {license?.plan || 'Corporate'} Plan
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="font-mono text-2xl sm:text-3xl font-extrabold tracking-wider text-white select-all bg-slate-950/80 border border-slate-800 px-4 py-2 rounded-xl">
+                        {license?.licenseKey || 'No License Key Assigned'}
+                      </div>
+                      {license?.licenseKey && (
+                        <button
+                          onClick={() => handleCopyLicense(license.licenseKey)}
+                          className="flex items-center gap-1.5 rounded-xl border border-sky-400/40 bg-sky-500/20 px-4 py-2 text-xs font-semibold text-sky-300 transition hover:bg-sky-500/30 active:scale-95 shadow-sm"
+                        >
+                          {copiedLicense ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
+                          <span>{copiedLicense ? 'Copied License Key!' : 'Copy License Key'}</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 md:text-right text-xs">
+                    <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                      <div className="text-slate-500">Max Devices / User</div>
+                      <div className="mt-1 text-base font-bold text-white font-mono">{license?.maxDevicesPerUser || 2} workstations</div>
+                    </div>
+                    <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                      <div className="text-slate-500">Offline Grace Period</div>
+                      <div className="mt-1 text-base font-bold text-white font-mono">{license?.offlineGraceHours || 72} hours</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Quota Progress Bar */}
+                <div className="space-y-2 pt-2 border-t border-slate-800/80">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-medium text-slate-300">
+                      Seat Quota: <span className="text-white font-bold">{license?.occupiedSeats || 0}</span> occupied of{' '}
+                      <span className="text-white font-bold">{license?.seatLimit || 0}</span> total seats
+                    </span>
+                    <span className="font-semibold text-sky-300">
+                      {license?.availableSeats || 0} available remaining
+                    </span>
+                  </div>
+
+                  <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-800">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-sky-400 to-emerald-400 transition-all duration-500"
+                      style={{
+                        width: `${Math.min(100, ((license?.occupiedSeats || 0) / (license?.seatLimit || 1)) * 100)}%`,
+                      }}
+                    />
+                  </div>
+
+                  {license?.expiresAt && (
+                    <div className="text-[11px] text-slate-500">
+                      License expiration / renewal date: <span className="text-slate-300 font-medium">{new Date(license.expiresAt).toLocaleDateString()}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Activation Instructions Card */}
+              <div className="rounded-2xl border border-slate-800/80 bg-[#0b1220] p-6 space-y-4">
+                <div className="flex items-center gap-2 text-white font-semibold text-sm">
+                  <Info className="w-4 h-4 text-sky-400" />
+                  <span>How Employees Activate Workstations</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
+                  <div className="rounded-xl border border-slate-800/80 bg-slate-950/60 p-4 space-y-1.5">
+                    <div className="font-bold text-sky-400 text-sm">Step 1</div>
+                    <div className="font-semibold text-white">Download Agent</div>
+                    <p className="text-slate-400 text-[11px]">
+                      Employee downloads Windows Desktop Agent or installs Chrome Extension.
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-800/80 bg-slate-950/60 p-4 space-y-1.5">
+                    <div className="font-bold text-sky-400 text-sm">Step 2</div>
+                    <div className="font-semibold text-white">Enter License Key</div>
+                    <p className="text-slate-400 text-[11px]">
+                      Enter Company License Key <span className="font-mono text-sky-300">{license?.licenseKey || 'KEY'}</span> on the pairing prompt.
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-800/80 bg-slate-950/60 p-4 space-y-1.5">
+                    <div className="font-bold text-sky-400 text-sm">Step 3</div>
+                    <div className="font-semibold text-white">Verify Corporate Email</div>
+                    <p className="text-slate-400 text-[11px]">
+                      Employee enters their assigned corporate email from the Employee Directory.
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-800/80 bg-slate-950/60 p-4 space-y-1.5">
+                    <div className="font-bold text-emerald-400 text-sm">Step 4</div>
+                    <div className="font-semibold text-white">Instant Protection</div>
+                    <p className="text-slate-400 text-[11px]">
+                      The workstation pairs securely. Real-time prompt DLP policies and secret scanning start protecting immediately.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Currently Licensed Employees */}
+              <div className="rounded-2xl border border-slate-800/80 bg-[#0b1220] p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm font-semibold text-white">Licensed Team Members ({employees.filter((e) => e.hasSeat).length})</h2>
+                    <p className="text-xs text-slate-400">Team members who are currently occupying a paid license seat.</p>
+                  </div>
+                  <button
+                    onClick={() => setActiveTab('employees')}
+                    className="text-xs text-sky-400 hover:text-sky-300 transition"
+                  >
+                    Go to Employee Directory &rarr;
+                  </button>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="border-b border-slate-800 text-slate-400">
+                      <tr>
+                        <th className="pb-3">Name</th>
+                        <th className="pb-3">Email</th>
+                        <th className="pb-3">Department</th>
+                        <th className="pb-3">System ID</th>
+                        <th className="pb-3">Active Devices</th>
+                        <th className="pb-3 text-right">Seat Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60">
+                      {employees.filter((e) => e.hasSeat).length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="py-8 text-center text-slate-500">
+                            No employees have been assigned a license seat yet.
+                          </td>
+                        </tr>
+                      ) : (
+                        employees.filter((e) => e.hasSeat).map((emp) => (
+                          <tr key={emp.userId} className="text-slate-300 hover:bg-slate-800/30">
+                            <td className="py-3 font-semibold text-white">{emp.name}</td>
+                            <td className="py-3 font-mono text-[11px] text-slate-300">{emp.email}</td>
+                            <td className="py-3">{emp.department || '—'}</td>
+                            <td className="py-3 font-mono text-[11px]">{emp.systemId || '—'}</td>
+                            <td className="py-3 font-mono text-emerald-400">{emp.deviceCount} paired</td>
+                            <td className="py-3 text-right">
+                              <button
+                                onClick={() => handleToggleSeat(emp.userId, true)}
+                                className="px-2.5 py-1 rounded bg-slate-800 hover:bg-red-500/10 text-slate-300 hover:text-red-400 text-[11px] border border-slate-700 transition"
+                              >
+                                Revoke Seat
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           )}
 
@@ -1030,7 +2184,7 @@ export default function CompanyDashboard() {
                 <div>
                   <h1 className="text-2xl font-semibold tracking-tight text-white">Activity</h1>
                   <p className="mt-1 text-sm text-slate-400">
-                    Prompt submission attempts reported by connected browsers and devices.
+                    Prompt and locally scanned file-submission attempts reported by connected browsers and devices.
                   </p>
                 </div>
                 <button
@@ -1138,7 +2292,15 @@ export default function CompanyDashboard() {
                           <div className="font-bold text-white">{evt.userName}</div>
                           <div className="text-[11px] text-slate-500">{evt.userEmail}</div>
                         </td>
-                        <td className="p-4 text-slate-400">{evt.targetApp}</td>
+                        <td className="p-4 text-slate-400">
+                          <div>{evt.targetApp}</div>
+                          {evt.inputType === 'file' && (
+                            <div className="mt-1 text-[10px] text-sky-300">
+                              File upload · {evt.fileCount} {evt.fileCount === 1 ? 'file' : 'files'}
+                              {evt.fileTypes?.length ? ` · ${evt.fileTypes.join(', ').toUpperCase()}` : ''}
+                            </div>
+                          )}
+                        </td>
                         <td className="p-4">
                           <span
                             className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
@@ -1165,16 +2327,23 @@ export default function CompanyDashboard() {
                           {evt.actionTaken}
                         </td>
                         <td className="p-4 font-mono text-[11px] text-slate-300 max-w-md">
-                          <details>
-                            <summary className="cursor-pointer truncate text-sky-300">
-                              {evt.redactedPreview === '[Prompt withheld; sensitive content blocked locally]'
-                                ? 'Prompt withheld'
-                                : 'View redacted prompt'}
-                            </summary>
-                            <pre className="mt-2 max-h-48 max-w-md overflow-auto whitespace-pre-wrap break-words rounded bg-slate-950 p-3 text-slate-300">
-                              {evt.redactedPreview}
-                            </pre>
-                          </details>
+                          {evt.redactedPreview && !evt.redactedPreview.startsWith('[Prompt withheld') && !evt.redactedPreview.startsWith('[Preview withheld') ? (
+                            <div className="space-y-1">
+                              <div className="rounded border border-slate-800 bg-slate-950/80 p-2 text-slate-200 select-text line-clamp-3 whitespace-pre-wrap break-words">
+                                {evt.redactedPreview}
+                              </div>
+                              {evt.redactedPreview.length > 120 && (
+                                <details className="text-[10px]">
+                                  <summary className="cursor-pointer text-sky-400 hover:text-sky-300">Expand full prompt</summary>
+                                  <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded border border-slate-800 bg-slate-950 p-2 text-slate-200">
+                                    {evt.redactedPreview}
+                                  </pre>
+                                </details>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-slate-500 italic">{evt.redactedPreview || 'No prompt preview recorded'}</span>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -1325,12 +2494,341 @@ export default function CompanyDashboard() {
         </main>
       </div>
 
-      {/* Invite Modal */}
+      {/* Excel / CSV Import Modal */}
+      {showImportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-4xl rounded-2xl border border-slate-800 bg-[#0b1220] p-6 shadow-2xl space-y-5 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div>
+                <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                  <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
+                  <span>Import Employee Data</span>
+                </h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Review the parsed employee rows before importing into the company workspace.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowImportModal(false);
+                  setImportPreviewRows([]);
+                  setImportMessage(null);
+                }}
+                className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white"
+              >
+                <XCircle className="h-5 w-5" />
+              </button>
+            </div>
+
+            {importMessage && (
+              <div className={`rounded-xl border p-3 text-xs font-medium ${
+                importMessage.type === 'error'
+                  ? 'border-red-900/70 bg-red-950/40 text-red-200'
+                  : 'border-emerald-900/70 bg-emerald-950/40 text-emerald-200'
+              }`}>
+                {importMessage.text}
+              </div>
+            )}
+
+            {/* Preview Table */}
+            <div className="flex-1 overflow-y-auto rounded-xl border border-slate-800/80 bg-slate-950/70">
+              <table className="w-full text-left text-xs">
+                <thead className="sticky top-0 bg-[#0d1527] border-b border-slate-800 text-slate-400 font-semibold">
+                  <tr>
+                    <th className="p-3">#</th>
+                    <th className="p-3">Name</th>
+                    <th className="p-3">Email</th>
+                    <th className="p-3">Contact Number</th>
+                    <th className="p-3">Department</th>
+                    <th className="p-3">Designation</th>
+                    <th className="p-3">System ID</th>
+                    <th className="p-3 text-right">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {importPreviewRows.map((row) => (
+                    <tr key={row.rowNum} className={row.isValid ? 'hover:bg-slate-800/30' : 'bg-red-950/20 text-red-200'}>
+                      <td className="p-3 text-slate-500 font-mono text-[11px]">{row.rowNum}</td>
+                      <td className="p-3 font-semibold text-white">{row.name}</td>
+                      <td className="p-3 font-mono text-[11px] text-slate-300">{row.email}</td>
+                      <td className="p-3 font-mono text-slate-400">{row.phone || '—'}</td>
+                      <td className="p-3">{row.department || '—'}</td>
+                      <td className="p-3">{row.designation || '—'}</td>
+                      <td className="p-3 font-mono text-slate-300">{row.systemId || '—'}</td>
+                      <td className="p-3 text-right">
+                        {row.isValid ? (
+                          <span className="inline-flex items-center gap-1 text-emerald-400 font-semibold text-[10px]">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>Valid</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-red-400 font-semibold text-[10px]">
+                            <XCircle className="w-3.5 h-3.5" />
+                            <span>Invalid Email</span>
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Import summary */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-2 border-t border-slate-800">
+              <p className="max-w-xl text-xs leading-5 text-slate-400">
+                Import adds roster records only. Choose exactly who receives a seat from the Employee Directory; set each selected employee&apos;s password during assignment.
+              </p>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowImportModal(false);
+                    setImportPreviewRows([]);
+                  }}
+                  className="rounded-xl px-4 py-2 text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExecuteImport}
+                  disabled={isImporting || importPreviewRows.filter((r) => r.isValid).length === 0}
+                  className="rounded-xl bg-sky-400 px-5 py-2 text-xs font-semibold text-slate-950 transition hover:bg-sky-300 disabled:opacity-50 flex items-center gap-2"
+                >
+                  {isImporting ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Importing...</span>
+                    </>
+                  ) : (
+                    <span>
+                      Confirm & Import ({importPreviewRows.filter((r) => r.isValid).length} Rows)
+                    </span>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Employee Modal */}
+      {showEditModal && editingEmployee && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-2xl border border-slate-800 bg-[#0b1220] p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
+                <Edit2 className="w-4 h-4 text-sky-400" />
+                <span>Edit Employee Details</span>
+              </h2>
+              <button
+                onClick={() => {
+                  setShowEditModal(false);
+                  setEditingEmployee(null);
+                }}
+                className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white"
+              >
+                <XCircle className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit} className="space-y-4 text-xs">
+              <div>
+                <label className="mb-1 block font-medium text-slate-300">Full Name</label>
+                <input
+                  type="text"
+                  required
+                  value={editingEmployee.name}
+                  onChange={(e) => setEditingEmployee({ ...editingEmployee, name: e.target.value })}
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 p-2.5 text-xs text-white focus:border-sky-400 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block font-medium text-slate-300">Email Address</label>
+                <input
+                  type="email"
+                  disabled
+                  value={editingEmployee.email}
+                  className="w-full rounded-xl border border-slate-800 bg-slate-900/60 p-2.5 text-xs text-slate-500 cursor-not-allowed font-mono"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block font-medium text-slate-300">Contact Number</label>
+                  <input
+                    type="text"
+                    placeholder="9876543210"
+                    value={editingEmployee.phone}
+                    onChange={(e) => setEditingEmployee({ ...editingEmployee, phone: e.target.value })}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 p-2.5 text-xs text-white focus:border-sky-400 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block font-medium text-slate-300">Department</label>
+                  <input
+                    type="text"
+                    placeholder="IT / HR / Finance / Sales"
+                    value={editingEmployee.department}
+                    onChange={(e) => setEditingEmployee({ ...editingEmployee, department: e.target.value })}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 p-2.5 text-xs text-white focus:border-sky-400 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block font-medium text-slate-300">Designation</label>
+                  <input
+                    type="text"
+                    placeholder="Software Developer"
+                    value={editingEmployee.designation}
+                    onChange={(e) => setEditingEmployee({ ...editingEmployee, designation: e.target.value })}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 p-2.5 text-xs text-white focus:border-sky-400 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block font-medium text-slate-300">System ID</label>
+                  <input
+                    type="text"
+                    placeholder="SYS-001"
+                    value={editingEmployee.systemId}
+                    onChange={(e) => setEditingEmployee({ ...editingEmployee, systemId: e.target.value })}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 p-2.5 text-xs text-white focus:border-sky-400 focus:outline-none font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditModal(false);
+                    setEditingEmployee(null);
+                  }}
+                  className="rounded-xl px-4 py-2 font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editLoading}
+                  className="rounded-xl bg-sky-400 px-4 py-2 font-semibold text-slate-950 transition hover:bg-sky-300 disabled:opacity-50"
+                >
+                  {editLoading ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Assign employee license seat */}
+      {seatAssignmentEmployee && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/85 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md space-y-5 rounded-2xl border border-sky-500/20 bg-[#0b1220] p-6 shadow-2xl shadow-sky-950/30">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-800 pb-4">
+              <div>
+                <h2 className="flex items-center gap-2 text-base font-bold text-white">
+                  <Key className="h-4 w-4 text-sky-400" />
+                  {seatAssignmentEmployee.hasSeat ? 'Reset employee password' : 'Assign a license seat'}
+                </h2>
+                <p className="mt-2 text-xs text-slate-400">
+                  {seatAssignmentEmployee.hasSeat ? 'Set a new sign-in password for ' : 'This enables sign-in for '}
+                  <span className="font-mono text-sky-300">{seatAssignmentEmployee.email}</span>.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSeatAssignmentEmployee(null)}
+                aria-label="Close seat assignment dialog"
+                className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white"
+              >
+                <XCircle className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAssignSeatWithPassword} className="space-y-4">
+              <div>
+                <label htmlFor="seat-password" className="mb-1.5 block text-xs font-medium text-slate-300">
+                  Set employee password
+                </label>
+                <input
+                  id="seat-password"
+                  type="password"
+                  required
+                  minLength={12}
+                  maxLength={128}
+                  autoComplete="new-password"
+                  value={seatAssignmentPassword}
+                  onChange={(event) => setSeatAssignmentPassword(event.target.value)}
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none transition focus:border-sky-400"
+                  placeholder="At least 12 characters"
+                />
+              </div>
+              <div>
+                <label htmlFor="seat-password-confirm" className="mb-1.5 block text-xs font-medium text-slate-300">
+                  Confirm password
+                </label>
+                <input
+                  id="seat-password-confirm"
+                  type="password"
+                  required
+                  minLength={12}
+                  maxLength={128}
+                  autoComplete="new-password"
+                  value={seatAssignmentPasswordConfirm}
+                  onChange={(event) => setSeatAssignmentPasswordConfirm(event.target.value)}
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none transition focus:border-sky-400"
+                  placeholder="Re-enter the password"
+                />
+              </div>
+              <p className="text-[11px] leading-5 text-slate-400">
+                Use a unique password, not their email. Share it with the employee securely; it is not sent by email.
+              </p>
+              {seatAssignmentError && (
+                <p role="alert" className="rounded-lg border border-red-900/70 bg-red-950/30 p-3 text-xs text-red-200">
+                  {seatAssignmentError}
+                </p>
+              )}
+              <div className="flex justify-end gap-2 border-t border-slate-800 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setSeatAssignmentEmployee(null)}
+                  disabled={seatAssignmentLoading}
+                  className="rounded-xl px-4 py-2 text-xs font-medium text-slate-400 transition hover:bg-slate-800 hover:text-white disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={seatAssignmentLoading}
+                  className="rounded-xl bg-sky-500 px-4 py-2 text-xs font-bold text-slate-950 transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {seatAssignmentLoading
+                    ? (seatAssignmentEmployee.hasSeat ? 'Updating…' : 'Assigning…')
+                    : (seatAssignmentEmployee.hasSeat ? 'Reset password' : 'Set password & assign seat')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add / Invite Employee Modal */}
       {showInviteModal && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-          <div className="w-full max-w-md space-y-4 rounded-2xl border border-slate-800 bg-[#0b1220] p-6 text-sm shadow-2xl">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h2 className="text-base font-semibold text-white">Invite a teammate</h2>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-2xl border border-slate-800 bg-[#0b1220] p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
+                <Plus className="w-4 h-4 text-sky-400" />
+                <span>Add New Employee</span>
+              </h2>
               <button
                 onClick={() => setShowInviteModal(false)}
                 aria-label="Close invite dialog"
@@ -1341,7 +2839,7 @@ export default function CompanyDashboard() {
             </div>
 
             {inviteMessage && (
-              <div className={`rounded-lg border p-3 ${
+              <div className={`rounded-xl border p-3 text-xs font-medium ${
                 inviteMessage.startsWith('Error:')
                   ? 'border-red-900/70 bg-red-950/30 text-red-200'
                   : 'border-emerald-900/70 bg-emerald-950/30 text-emerald-200'
@@ -1350,49 +2848,99 @@ export default function CompanyDashboard() {
               </div>
             )}
 
-            <form onSubmit={handleInviteEmployee} className="space-y-4">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-300">Full name</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Rahul Sharma"
-                  value={inviteName}
-                  onChange={(e) => setInviteName(e.target.value)}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-950 p-3 text-sm text-white focus:border-sky-400 focus:outline-none"
-                />
+            <form onSubmit={handleInviteEmployee} className="space-y-4 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block font-medium text-slate-300">Full Name *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Rahul Sharma"
+                    value={inviteName}
+                    onChange={(e) => setInviteName(e.target.value)}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 p-2.5 text-xs text-white focus:border-sky-400 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block font-medium text-slate-300">Work Email *</label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="rahul@company.com"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 p-2.5 text-xs text-white focus:border-sky-400 focus:outline-none font-mono"
+                  />
+                </div>
               </div>
 
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-300">Work email</label>
-                <input
-                  type="email"
-                  required
-                  placeholder="rahul@company.com"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-950 p-3 text-sm text-white focus:border-sky-400 focus:outline-none"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block font-medium text-slate-300">Contact Number</label>
+                  <input
+                    type="text"
+                    placeholder="9876543210"
+                    value={invitePhone}
+                    onChange={(e) => setInvitePhone(e.target.value)}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 p-2.5 text-xs text-white focus:border-sky-400 focus:outline-none font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block font-medium text-slate-300">Department</label>
+                  <input
+                    type="text"
+                    placeholder="IT, HR, Finance, Sales"
+                    value={inviteDept}
+                    onChange={(e) => setInviteDept(e.target.value)}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 p-2.5 text-xs text-white focus:border-sky-400 focus:outline-none"
+                  />
+                </div>
               </div>
 
-              <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-3 text-xs leading-5 text-slate-400">
-                We’ll email them a secure link to join your workspace.
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block font-medium text-slate-300">Designation</label>
+                  <input
+                    type="text"
+                    placeholder="Software Developer"
+                    value={inviteDesignation}
+                    onChange={(e) => setInviteDesignation(e.target.value)}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 p-2.5 text-xs text-white focus:border-sky-400 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block font-medium text-slate-300">System ID</label>
+                  <input
+                    type="text"
+                    placeholder="SYS-001"
+                    value={inviteSystemId}
+                    onChange={(e) => setInviteSystemId(e.target.value)}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 p-2.5 text-xs text-white focus:border-sky-400 focus:outline-none font-mono"
+                  />
+                </div>
               </div>
 
-              <div className="pt-2 flex items-center justify-end space-x-2">
+              <p className="text-[11px] leading-5 text-slate-400">
+                Inviting an employee does not assign a seat. After they join, assign a seat from the directory and set their sign-in password.
+              </p>
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-800">
                 <button
                   type="button"
                   onClick={() => setShowInviteModal(false)}
-                  className="rounded-lg px-3.5 py-2.5 text-sm font-medium text-slate-300 transition hover:bg-slate-800"
+                  className="rounded-xl px-4 py-2 font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={inviteLoading}
-                  className="rounded-lg bg-sky-400 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-sky-300 disabled:opacity-50"
+                  className="rounded-xl bg-sky-400 px-4 py-2 font-semibold text-slate-950 transition hover:bg-sky-300 disabled:opacity-50"
                 >
-                  {inviteLoading ? 'Sending Invitation...' : 'Send Invitation'}
+                  {inviteLoading ? 'Adding...' : 'Add Employee'}
                 </button>
               </div>
             </form>

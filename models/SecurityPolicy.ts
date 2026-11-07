@@ -40,7 +40,7 @@ const SecurityPolicySchema = new Schema<ISecurityPolicy>(
     maxDevicesPerUser: { type: Number, default: 2, min: 1, max: 10 },
     offlineGracePeriodHours: { type: Number, default: 72, min: 1, max: 720 },
     fullPromptLoggingEnabled: { type: Boolean, default: false },
-    redactedPromptLoggingEnabled: { type: Boolean, default: false },
+    redactedPromptLoggingEnabled: { type: Boolean, default: true },
     customRules: [DetectionRuleSchema],
   },
   {

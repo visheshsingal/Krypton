@@ -13,6 +13,10 @@ const categories = new Set([
   'cloud_credential', 'pii', 'custom_keyword', 'custom_regex',
 ]);
 const actions = new Set(['block', 'warn']);
+const fileTypes = new Set([
+  'txt', 'csv', 'tsv', 'md', 'json', 'xml', 'html', 'log', 'yaml', 'yml',
+  'pdf', 'docx', 'xlsx', 'pptx', 'png', 'jpg', 'jpeg', 'webp', 'bmp', 'unknown',
+]);
 
 function isRiskLevel(value: unknown): value is 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' {
   return typeof value === 'string' && riskLevels.has(value);
@@ -75,19 +79,37 @@ export async function POST(req: NextRequest) {
     ) {
       return NextResponse.json({ error: 'Invalid blocked-event metadata.' }, { status: 400 });
     }
-    if (isPromptSubmission && body.actionTaken !== 'allow' && body.actionTaken !== 'block') {
+    if (isPromptSubmission && body.actionTaken !== 'allow' && body.actionTaken !== 'block' && body.actionTaken !== 'warn') {
       return NextResponse.json({ error: 'Invalid prompt submission outcome.' }, { status: 400 });
     }
-
-    const promptPreview = typeof body.redactedPreview === 'string' ? body.redactedPreview : '';
-    if (promptPreview.length > 10_000) {
-      return NextResponse.json({ error: 'Prompt preview is too long.' }, { status: 400 });
+    if (
+      body.inputType !== undefined &&
+      (body.inputType !== 'file' ||
+        typeof body.fileCount !== 'number' ||
+        !Number.isInteger(body.fileCount) ||
+        body.fileCount < 1 ||
+        body.fileCount > 10 ||
+        !Array.isArray(body.fileTypes) ||
+        body.fileTypes.length > 10 ||
+        body.fileTypes.some((type) => typeof type !== 'string' || !fileTypes.has(type)))
+    ) {
+      return NextResponse.json({ error: 'Invalid file-scan metadata.' }, { status: 400 });
+    }
+    if (
+      body.warningResponse !== undefined &&
+      (!isPromptSubmission ||
+        (body.warningResponse !== 'proceeded' && body.warningResponse !== 'dismissed') ||
+        (body.warningResponse === 'proceeded' && body.actionTaken !== 'warn') ||
+        (body.warningResponse === 'dismissed' && body.actionTaken !== 'block'))
+    ) {
+      return NextResponse.json({ error: 'Invalid warning response.' }, { status: 400 });
     }
 
     const policy = await SecurityPolicy.findOne({ companyId: session.companyId });
     const promptLoggingEnabled = policy?.redactedPromptLoggingEnabled === true;
-    if (isPromptSubmission && body.actionTaken === 'allow' && !promptLoggingEnabled) {
-      return NextResponse.json({ accepted: false, reason: 'prompt_logging_disabled' });
+    const promptPreview = promptLoggingEnabled && typeof body.redactedPreview === 'string' ? body.redactedPreview : '';
+    if (promptPreview.length > 10_000) {
+      return NextResponse.json({ error: 'Prompt preview is too long.' }, { status: 400 });
     }
 
     const hostname = typeof body.hostname === 'string' ? body.hostname.toLowerCase() : '';
@@ -118,8 +140,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Extension event rate limit reached.' }, { status: 429 });
     }
 
-    let redactedPreview = '[Prompt withheld; sensitive content blocked locally]';
-    if (isPromptSubmission && promptLoggingEnabled && promptPreview) {
+    let redactedPreview = '[No prompt content captured]';
+    if (promptPreview) {
       const companyRules = policy?.customRules.map((rule) => ({
         ruleCode: rule.ruleCode,
         name: rule.name,
@@ -146,7 +168,18 @@ export async function POST(req: NextRequest) {
       ruleCode: body.ruleCode.slice(0, 100),
       ruleName: body.ruleName.slice(0, 200),
       ...(isCategory(body.category) ? { category: body.category } : {}),
+      eventType: isPromptSubmission ? 'prompt_submission' : 'security_detection',
       actionTaken: body.actionTaken,
+      ...(body.warningResponse === 'proceeded' || body.warningResponse === 'dismissed'
+        ? { warningResponse: body.warningResponse }
+        : {}),
+      ...(body.inputType === 'file'
+        ? {
+            inputType: 'file',
+            fileCount: body.fileCount,
+            fileTypes: body.fileTypes,
+          }
+        : {}),
       redactedPreview,
       explanation: typeof body.explanation === 'string' ? body.explanation.slice(0, 1000) : '',
       timestamp: new Date(),

@@ -114,49 +114,12 @@ export async function activateDesktopDevice(params: ActivationParams): Promise<A
     };
   }
 
-  // 4. Atomic Seat Allocation:
-  // If user does not yet have a seat allocated, increment occupiedSeats atomically
-  if (!user.hasLicenseSeat) {
-    const updatedLicense = await License.findOneAndUpdate(
-      {
-        _id: license._id,
-        status: 'active',
-        $expr: { $lt: ['$occupiedSeats', '$seatLimit'] },
-      },
-      {
-        $inc: { occupiedSeats: 1 },
-      },
-      { new: true }
-    );
-
-    if (!updatedLicense) {
-      return {
-        success: false,
-        error: `All ${license.seatLimit} purchased seats are currently occupied. Please request additional seats from your administrator.`,
-        statusCode: 409,
-      };
-    }
-
-    user.hasLicenseSeat = true;
-    await user.save();
-
-    membership.hasSeat = true;
-    await membership.save();
-
-    await logAuditEvent({
-      companyId: company._id,
-      actorId: user._id,
-      actorEmail: user.email,
-      actorRole: user.role,
-      action: 'SEAT_ALLOCATED_ATOMICALLY',
-      entityType: 'License',
-      entityId: license._id.toString(),
-      details: {
-        occupiedSeats: updatedLicense.occupiedSeats,
-        seatLimit: updatedLicense.seatLimit,
-        userId: user._id.toString(),
-      },
-    });
+  if (user.role === 'employee' && (!user.hasLicenseSeat || !membership.hasSeat)) {
+    return {
+      success: false,
+      error: 'A company administrator must assign a license seat before this employee can activate a device.',
+      statusCode: 403,
+    };
   }
 
   // 5. Device Registration and Limit Check
