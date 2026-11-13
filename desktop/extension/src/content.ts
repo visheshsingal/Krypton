@@ -13,6 +13,7 @@ let authorized = false;
 let currentPolicy: SecurityPolicyDTO | null = null;
 let confirmationOpen = false;
 let banner: HTMLDivElement | null = null;
+let bannerDismissTimer: ReturnType<typeof setTimeout> | null = null;
 let approvedWarning: { prompt: string; expiresAt: number } | null = null;
 let lastReportedSubmission: { key: string; at: number } | null = null;
 const replayedFileEvents = new WeakSet<Event>();
@@ -79,7 +80,10 @@ function showBanner(
   ruleNames: string[],
   title = 'Krypton blocked this submission',
   description = 'Sensitive content was detected locally. Remove it before submitting.',
+  dismissAfterMs = 3_000,
 ): void {
+  if (bannerDismissTimer) clearTimeout(bannerDismissTimer);
+  bannerDismissTimer = null;
   if (!banner || !banner.isConnected) {
     banner = document.createElement('div');
     banner.setAttribute('role', 'alert');
@@ -106,6 +110,20 @@ function showBanner(
     item.textContent = name;
     return item;
   }));
+  if (dismissAfterMs > 0) {
+    bannerDismissTimer = setTimeout(() => {
+      banner?.remove();
+      banner = null;
+      bannerDismissTimer = null;
+    }, dismissAfterMs);
+  }
+}
+
+function dismissBanner(): void {
+  if (bannerDismissTimer) clearTimeout(bannerDismissTimer);
+  bannerDismissTimer = null;
+  banner?.remove();
+  banner = null;
 }
 
 function cancel(event: Event): void {
@@ -210,9 +228,8 @@ async function handleSelectedFiles(
   clear: () => void,
   isCurrent: () => boolean = () => true,
 ): Promise<void> {
-  banner?.remove();
-  banner = null;
-  showBanner([], 'Scanning selected files', 'Files are being checked locally on this device. Their contents are not uploaded to Krypton.');
+  dismissBanner();
+  showBanner([], 'Scanning selected files', 'Files are being checked locally on this device. Their contents are not uploaded to Krypton.', 0);
   try {
     const result = await inspectFiles(files);
     if (!isCurrent()) return;
@@ -255,8 +272,7 @@ async function handleSelectedFiles(
       reportFileSubmission(result, files, 'allow');
     }
     replay();
-    banner?.remove();
-    banner = null;
+    dismissBanner();
   } catch (error) {
     if (!isCurrent()) return;
     clear();
@@ -357,6 +373,16 @@ function inspect(event: Event, editor: HTMLElement | null): void {
   }
 
   if (result.action === 'warn') {
+    if (!engine.allowsEmployeeWarningBypass()) {
+      cancel(event);
+      reportSubmission(result, prompt, 'block', 'dismissed');
+      showBanner(
+        Array.from(new Set(result.matches.map((match) => match.ruleName))).slice(0, 5),
+        'Krypton blocked this submission',
+        'Company policy does not allow continuing after this warning.',
+      );
+      return;
+    }
     if (confirmationOpen) {
       cancel(event);
       return;

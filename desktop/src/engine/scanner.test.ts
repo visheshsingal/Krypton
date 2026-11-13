@@ -1,4 +1,24 @@
 import { PromptSecurityEngine } from './scanner';
+import { SecurityPolicyDTO } from '@krypton/shared';
+
+function createPolicy(overrides: Partial<SecurityPolicyDTO> = {}): SecurityPolicyDTO {
+  return {
+    companyId: 'company-test',
+    blockCriticalRisk: true,
+    blockHighRisk: true,
+    warnMediumRisk: true,
+    allowLowRisk: true,
+    allowEmployeeBypassWarning: true,
+    enablePiiDetection: true,
+    enableSecretDetection: true,
+    enableCustomRules: true,
+    customRules: [],
+    maxDevicesPerUser: 2,
+    offlineGracePeriodHours: 72,
+    fullPromptLoggingEnabled: false,
+    ...overrides,
+  };
+}
 
 describe('AI Prompt Security Engine - Local Deterministic Scanner', () => {
   const engine = new PromptSecurityEngine();
@@ -145,5 +165,64 @@ describe('AI Prompt Security Engine - Local Deterministic Scanner', () => {
     expect(result.action).toBe('block');
     expect(result.matches.map((match) => match.ruleCode)).toContain('PII_CREDIT_CARD');
     expect(result.redactedPrompt).not.toContain('4111 1111 1111 1111');
+  });
+
+  test('applies each severity policy and allows clean prompts', () => {
+    const policyEngine = new PromptSecurityEngine([], createPolicy());
+    expect(policyEngine.scan('Please review key sk-proj-abc1234567890def1234567890ghij').action).toBe('block');
+    expect(policyEngine.scan('Contact test@example.com').action).toBe('warn');
+    expect(policyEngine.scan('Explain how a REST API works.').action).toBe('allow');
+  });
+
+  test('disabled critical, high, and medium enforcement allows those matches', () => {
+    const policyEngine = new PromptSecurityEngine([], createPolicy({
+      blockCriticalRisk: false,
+      blockHighRisk: false,
+      warnMediumRisk: false,
+    }));
+
+    expect(policyEngine.scan('Secret key sk-proj-abc1234567890def1234567890ghij').action).toBe('allow');
+    expect(policyEngine.scan('My account number is 6465745724872').action).toBe('allow');
+    expect(policyEngine.scan('Contact test@example.com').action).toBe('allow');
+  });
+
+  test('does not let a disabled critical rule suppress an enabled medium warning', () => {
+    const policyEngine = new PromptSecurityEngine([], createPolicy({ blockCriticalRisk: false }));
+
+    const result = policyEngine.scan(
+      'Contact test@example.com about secret key sk-proj-abc1234567890def1234567890ghij',
+    );
+
+    expect(result.highestRisk).toBe('CRITICAL');
+    expect(result.action).toBe('warn');
+  });
+
+  test('disabling allow-low-risk enforcement blocks low-risk matches', () => {
+    const lowRiskRule = {
+      ruleCode: 'CUSTOM_LOW',
+      name: 'Low-risk test rule',
+      description: 'Test low-risk policy behavior',
+      category: 'custom_keyword' as const,
+      pattern: 'internal-tag',
+      riskLevel: 'LOW' as const,
+      action: 'allow' as const,
+      isEnabled: true,
+      isBuiltIn: false,
+      explanation: 'Low-risk test match.',
+    };
+    const policyEngine = new PromptSecurityEngine([], createPolicy({
+      allowLowRisk: false,
+      customRules: [lowRiskRule],
+    }));
+
+    expect(policyEngine.scan('internal-tag').action).toBe('block');
+  });
+
+  test('exposes the company warning-bypass setting to desktop and extension enforcement', () => {
+    expect(new PromptSecurityEngine([], createPolicy()).allowsEmployeeWarningBypass()).toBe(true);
+    expect(new PromptSecurityEngine([], createPolicy({
+      allowEmployeeBypassWarning: false,
+    })).allowsEmployeeWarningBypass()).toBe(false);
+    expect(new PromptSecurityEngine().allowsEmployeeWarningBypass()).toBe(true);
   });
 });

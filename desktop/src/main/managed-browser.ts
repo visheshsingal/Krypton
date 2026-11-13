@@ -445,7 +445,7 @@ export class ManagedBrowserSession {
       return;
     }
 
-    if (result.action === 'warn') {
+    if (result.action === 'warn' && this.scanner.allowsEmployeeWarningBypass()) {
       const { dialog } = await import('electron');
       const response = await dialog.showMessageBox({
         type: 'warning',
@@ -469,10 +469,17 @@ export class ManagedBrowserSession {
     }
 
     await connection.send('Fetch.failRequest', { requestId, errorReason: 'BlockedByClient' }, sessionId).catch(() => undefined);
-    await this.reportSubmission(result, request.url, 'block');
+    await this.reportSubmission(
+      result,
+      request.url,
+      'block',
+      result.action === 'warn' ? 'dismissed' : undefined,
+    );
     await this.showProtectionNotice(
       sessionId,
-      `Krypton blocked this submission: ${result.matches.slice(0, 3).map((match) => match.ruleName).join(', ')}`,
+      result.action === 'warn'
+        ? 'Krypton stopped this submission because company policy does not allow continuing after a warning.'
+        : `Krypton blocked this submission: ${result.matches.slice(0, 3).map((match) => match.ruleName).join(', ')}`,
     );
   }
 
@@ -501,7 +508,11 @@ export class ManagedBrowserSession {
         (document.body || document.documentElement).appendChild(notice);
       }
       notice.textContent = ${JSON.stringify(message)};
-      setTimeout(() => notice.remove(), 8000);
+      if (notice._kryptonDismissTimer) clearTimeout(notice._kryptonDismissTimer);
+      notice._kryptonDismissTimer = setTimeout(() => {
+        notice.remove();
+        notice._kryptonDismissTimer = null;
+      }, 3000);
     })()`;
     await this.requireConnection().send('Runtime.evaluate', { expression }, sessionId).catch(() => undefined);
   }

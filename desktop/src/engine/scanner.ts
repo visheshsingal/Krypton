@@ -15,13 +15,17 @@ export class PromptSecurityEngine {
 
   constructor(customRules: DetectionRuleDTO[] = [], policy: SecurityPolicyDTO | null = null) {
     this.policy = policy;
-    this.rules = [...BUILT_IN_RULES, ...customRules];
+    this.rules = [...BUILT_IN_RULES, ...(policy?.customRules || customRules)];
   }
 
   public updatePolicy(policy: SecurityPolicyDTO): void {
     this.policy = policy;
     const customRules = policy.customRules || [];
     this.rules = [...BUILT_IN_RULES, ...customRules];
+  }
+
+  public allowsEmployeeWarningBypass(): boolean {
+    return this.policy?.allowEmployeeBypassWarning !== false;
   }
 
   public scan(prompt: string): PromptScanResult {
@@ -142,28 +146,28 @@ export class PromptSecurityEngine {
       }
     }
 
-    // Determine action based on policy or rule defaults
-    let finalAction: EnforcementAction = 'allow';
-    if (this.policy) {
-      if (highestRisk === 'CRITICAL' && this.policy.blockCriticalRisk) {
-        finalAction = 'block';
-      } else if (highestRisk === 'HIGH' && this.policy.blockHighRisk) {
-        finalAction = 'block';
-      } else if (highestRisk === 'MEDIUM' && this.policy.warnMediumRisk) {
-        finalAction = 'warn';
-      } else if (this.policy.allowLowRisk) {
-        finalAction = 'allow';
+    const actionPriority: Record<EnforcementAction, number> = {
+      allow: 0,
+      warn: 1,
+      block: 2,
+    };
+    const actions = nonOverlapping.map(({ rule }) => {
+      if (!this.policy) return rule.action;
+      switch (rule.riskLevel) {
+        case 'CRITICAL':
+          return this.policy.blockCriticalRisk ? 'block' : 'allow';
+        case 'HIGH':
+          return this.policy.blockHighRisk ? 'block' : 'allow';
+        case 'MEDIUM':
+          return this.policy.warnMediumRisk ? 'warn' : 'allow';
+        case 'LOW':
+          return this.policy.allowLowRisk ? 'allow' : 'block';
       }
-    } else {
-      // Default fallback policy
-      if (highestRisk === 'CRITICAL' || highestRisk === 'HIGH') {
-        finalAction = 'block';
-      } else if (highestRisk === 'MEDIUM') {
-        finalAction = 'warn';
-      } else {
-        finalAction = 'allow';
-      }
-    }
+    });
+    const finalAction = actions.reduce<EnforcementAction>(
+      (action, candidate) => actionPriority[candidate] > actionPriority[action] ? candidate : action,
+      'allow',
+    );
 
     // Construct redacted prompt and match list
     // Replace from end to start so character indices don't shift
