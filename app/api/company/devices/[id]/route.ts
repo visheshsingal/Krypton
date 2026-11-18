@@ -3,8 +3,10 @@ import mongoose from 'mongoose';
 import { connectDB } from '@/lib/db';
 import { Device } from '@/models/Device';
 import { BrowserExtensionSession } from '@/models/BrowserExtensionSession';
+import { License } from '@/models/License';
 import { authenticateRequest, enforceTenant } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
+import { syncCompanyDeviceSeats, withDeviceSeatLock } from '@/lib/device-seats';
 
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -35,11 +37,26 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
       return NextResponse.json({ error: 'Device not found' }, { status: 404 });
     }
 
-    device.status = 'revoked';
-    device.revokedAt = new Date();
-    device.usbMonitoringConsentAt = undefined;
-    device.usbMonitoringConsentVersion = undefined;
-    await device.save();
+    const license = await License.findOne({ companyId });
+    const revokeDevice = async () => {
+      device.status = 'revoked';
+      device.revokedAt = new Date();
+      device.usbMonitoringConsentAt = undefined;
+      device.usbMonitoringConsentVersion = undefined;
+      await device.save();
+      await syncCompanyDeviceSeats(companyId);
+    };
+    if (license) {
+      const revoked = await withDeviceSeatLock(license._id, async () => {
+        await revokeDevice();
+        return true;
+      });
+      if (!revoked) {
+        return NextResponse.json({ error: 'Device license allocation is busy. Please retry revoking this device.' }, { status: 409 });
+      }
+    } else {
+      await revokeDevice();
+    }
     await BrowserExtensionSession.updateMany(
       { companyId, desktopDeviceId: device.deviceId, status: { $in: ['pending', 'active'] } },
       {

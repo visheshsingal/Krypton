@@ -90,7 +90,7 @@ export async function authenticateRequest(req: NextRequest): Promise<{ user?: Au
         hasSeat: true,
       }).select('_id');
       if (!user.hasLicenseSeat || !membership) {
-        return { error: 'A license seat is not assigned to this employee', status: 403 };
+        return { error: 'Sign-in access is not enabled for this employee', status: 403 };
       }
     }
     if (user.role !== 'super_admin' && user.companyId) {

@@ -9,6 +9,8 @@ export interface ILicense extends Document {
   status: 'active' | 'suspended' | 'expired' | 'revoked';
   maxDevicesPerUser: number;
   offlineGraceHours: number;
+  deviceSeatLockToken?: string;
+  deviceSeatLockUntil?: Date;
   expiresAt: Date;
   createdBy?: mongoose.Types.ObjectId;
   createdAt: Date;
@@ -64,6 +66,14 @@ const LicenseSchema = new Schema<ILicense>(
       type: Number,
       default: 72,
       min: 1,
+    },
+    deviceSeatLockToken: {
+      type: String,
+      select: false,
+    },
+    deviceSeatLockUntil: {
+      type: Date,
+      select: false,
     },
     expiresAt: {
       type: Date,

@@ -42,7 +42,7 @@ export async function sendInvitationEmail(
       
       <div style="background: #eff6ff; border: 1px solid #bfdbfe; padding: 16px; border-radius: 6px; margin: 20px 0;">
         <p style="margin: 0; color: #1e3a8a; font-size: 13px;">
-          Your company administrator will assign your license seat and provide your sign-in details separately. You will not be able to sign in until then.
+          Your company administrator must enable your sign-in and provide your account details separately. You will not be able to sign in until then.
         </p>
       </div>
 

@@ -56,17 +56,54 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (isActive !== undefined) {
       targetUser.isActive = isActive;
       if (!isActive && targetUser.hasLicenseSeat) {
+        targetUser.passwordConfigured ??= true;
         await releaseSeatForUser(companyId, targetUser._id, auth.user);
         targetUser.hasLicenseSeat = false;
       }
     }
 
     if (hasLicenseSeat === false && targetUser.hasLicenseSeat) {
+      targetUser.passwordConfigured ??= true;
       await releaseSeatForUser(companyId, targetUser._id, auth.user);
       targetUser.hasLicenseSeat = false;
     } else if (hasLicenseSeat === true) {
       if (targetUser.role !== 'employee') {
-        return NextResponse.json({ error: 'License seats can only be assigned to employees.' }, { status: 400 });
+        return NextResponse.json({ error: 'Sign-in access can only be enabled for employees.' }, { status: 400 });
+      }
+      const membership = await Membership.findOne({ companyId, userId: targetUser._id, status: 'active' });
+      if (!membership) {
+        return NextResponse.json({ error: 'An active company membership is required before enabling sign-in.' }, { status: 409 });
+      }
+
+      const password = typeof body.password === 'string' ? body.password : '';
+      if (password && (
+        password.length < 12 ||
+        password.length > 128 ||
+        password.toLowerCase() === targetUser.email.toLowerCase()
+      )) {
+        return NextResponse.json({
+          error: 'Set a unique password with at least 12 characters. It cannot be the employee email address.',
+        }, { status: 400 });
+      }
+
+      if (password) {
+        targetUser.passwordHash = await bcrypt.hash(password, 12);
+        targetUser.passwordConfigured = true;
+      } else if (!targetUser.passwordConfigured && !targetUser.hasLicenseSeat) {
+        return NextResponse.json({ error: 'Set an employee password before enabling sign-in.' }, { status: 400 });
+      }
+
+      const { License } = await import('@/models/License');
+      const license = await License.findOne({ companyId });
+      if (!license || license.status !== 'active' || license.expiresAt <= new Date()) {
+        return NextResponse.json({ error: 'The company license is unavailable or expired.' }, { status: 403 });
+      }
+      targetUser.hasLicenseSeat = true;
+      membership.hasSeat = true;
+      await Promise.all([targetUser.save(), membership.save()]);
+    } else if (body.password !== undefined) {
+      if (targetUser.role !== 'employee') {
+        return NextResponse.json({ error: 'A password can only be set for employees.' }, { status: 400 });
       }
       const password = typeof body.password === 'string' ? body.password : '';
       if (
@@ -78,62 +115,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
           error: 'Set a unique password with at least 12 characters. It cannot be the employee email address.',
         }, { status: 400 });
       }
-
-      const membership = await Membership.findOne({ companyId, userId: targetUser._id, status: 'active' });
-      if (!membership) {
-        return NextResponse.json({ error: 'An active company membership is required before assigning a seat.' }, { status: 409 });
-      }
-
-      const passwordHash = await bcrypt.hash(password, 12);
-      if (targetUser.hasLicenseSeat) {
-        targetUser.passwordHash = passwordHash;
-        membership.hasSeat = true;
-        await Promise.all([targetUser.save(), membership.save()]);
-      } else {
-        const { License } = await import('@/models/License');
-        const license = await License.findOne({ companyId });
-        if (!license || license.status !== 'active' || license.expiresAt <= new Date()) {
-          return NextResponse.json({ error: 'The company license is unavailable or expired.' }, { status: 403 });
-        }
-        const allocatedLicense = await License.findOneAndUpdate(
-          {
-            _id: license._id,
-            status: 'active',
-            expiresAt: { $gt: new Date() },
-            $expr: { $lt: ['$occupiedSeats', '$seatLimit'] },
-          },
-          { $inc: { occupiedSeats: 1 } },
-          { new: true },
-        );
-        if (!allocatedLicense) {
-          return NextResponse.json({ error: 'No available license seats remaining. Please release an unused seat.' }, { status: 400 });
-        }
-
-        const claimedUser = await User.findOneAndUpdate(
-          { _id: targetUser._id, isActive: true, hasLicenseSeat: { $ne: true } },
-          { $set: { hasLicenseSeat: true, passwordHash } },
-          { new: true },
-        );
-        if (!claimedUser) {
-          await License.updateOne({ _id: allocatedLicense._id, occupiedSeats: { $gt: 0 } }, { $inc: { occupiedSeats: -1 } });
-          return NextResponse.json({ error: 'Employee seat status changed. Refresh the directory and try again.' }, { status: 409 });
-        }
-        try {
-          membership.hasSeat = true;
-          await membership.save();
-          targetUser.hasLicenseSeat = true;
-          targetUser.passwordHash = passwordHash;
-        } catch (error) {
-          await Promise.all([
-            User.updateOne(
-              { _id: targetUser._id, hasLicenseSeat: true },
-              { $set: { hasLicenseSeat: false, passwordHash: targetUser.passwordHash } },
-            ),
-            License.updateOne({ _id: allocatedLicense._id, occupiedSeats: { $gt: 0 } }, { $inc: { occupiedSeats: -1 } }),
-          ]);
-          throw error;
-        }
-      }
+      targetUser.passwordHash = await bcrypt.hash(password, 12);
+      targetUser.passwordConfigured = true;
     }
 
     if (hasLicenseSeat !== true || targetUser.hasLicenseSeat === false) {
@@ -164,6 +147,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         systemId: targetUser.systemId,
         isActive: targetUser.isActive,
         hasLicenseSeat: targetUser.hasLicenseSeat,
+        hasPasswordConfigured: targetUser.passwordConfigured,
       },
     });
   } catch (err: any) {

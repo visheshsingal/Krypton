@@ -255,7 +255,7 @@ async function seed() {
       licenseKey: demoLicenseKey,
       plan: 'business',
       seatLimit: 10,
-      occupiedSeats: 3,
+      occupiedSeats: 0,
       status: 'active',
       maxDevicesPerUser: 2,
       offlineGraceHours: 72,

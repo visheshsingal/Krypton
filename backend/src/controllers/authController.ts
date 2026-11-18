@@ -95,7 +95,7 @@ export async function registerCompany(req: Request, res: Response): Promise<void
           licenseKey,
           plan,
           seatLimit: Math.max(seats, 1),
-          occupiedSeats: 1, // Admin occupies 1 seat
+          occupiedSeats: 0,
           status: 'active',
           maxDevicesPerUser: config.defaults.maxDevicesPerUser,
           offlineGraceHours: config.defaults.offlineGraceHours,

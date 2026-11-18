@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
     const companyId = tenant.companyId;
 
     const memberships = await Membership.find({ companyId })
-      .populate('userId', 'name email role isActive hasLicenseSeat phone department designation systemId createdAt')
+      .populate('userId', 'name email role isActive hasLicenseSeat passwordConfigured phone department designation systemId createdAt')
       .sort({ createdAt: -1 });
 
     const invitations = await Invitation.find({
@@ -58,6 +58,7 @@ export async function GET(req: NextRequest) {
         role: m.role,
         status: m.status,
         hasSeat: u?.hasLicenseSeat || false,
+        hasPasswordConfigured: Boolean(u?.passwordConfigured || u?.hasLicenseSeat),
         isActive: u?.isActive || false,
         deviceCount: u ? deviceCountMap[u._id.toString()] || 0 : 0,
         joinedAt: m.createdAt,

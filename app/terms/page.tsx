@@ -18,9 +18,9 @@ export default function TermsPage() {
           </section>
 
           <section className="space-y-2">
-            <h2 className="text-lg font-bold text-slate-900">2. Seat Allocations & Hardware Device Limits</h2>
+            <h2 className="text-lg font-bold text-slate-900">2. Device License Usage</h2>
             <p>
-              Each purchased or allocated license seat permits activation up to the company-configured device limit per user (default 2 devices). Deactivated or removed employees automatically release their seat back to the company pool.
+              Active paired devices are counted per employee in groups of two: one device uses one license, two devices use one, three or four devices use two, and so on. An employee with no active paired devices uses no device license. Device pairing is limited by the company&apos;s total license capacity; an administrator separately enables employee sign-in.
             </p>
           </section>
 

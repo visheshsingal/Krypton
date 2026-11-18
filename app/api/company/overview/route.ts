@@ -6,6 +6,11 @@ import { Membership } from '@/models/Membership';
 import { Device } from '@/models/Device';
 import { SecurityEvent } from '@/models/SecurityEvent';
 import { authenticateRequest, enforceTenant } from '@/lib/auth';
+import {
+  calculateCompanyDeviceSeats,
+  syncCompanyDeviceSeats,
+  withDeviceSeatLock,
+} from '@/lib/device-seats';
 
 export async function GET(req: NextRequest) {
   try {
@@ -36,7 +41,13 @@ export async function GET(req: NextRequest) {
     }
 
     const seatLimit = license?.seatLimit || 0;
-    const occupiedSeats = license?.occupiedSeats || 0;
+    const occupiedSeats = license
+      ? await withDeviceSeatLock(license._id, async (lockedLicense) => {
+          const currentUsage = await syncCompanyDeviceSeats(companyId);
+          lockedLicense.occupiedSeats = currentUsage;
+          return currentUsage;
+        }) ?? await calculateCompanyDeviceSeats(companyId)
+      : 0;
     const availableSeats = Math.max(0, seatLimit - occupiedSeats);
 
     return NextResponse.json({
@@ -58,7 +69,7 @@ export async function GET(req: NextRequest) {
             occupiedSeats,
             availableSeats,
             status: license.status,
-            maxDevicesPerUser: license.maxDevicesPerUser,
+            devicesPerLicenseSeat: 2,
             offlineGraceHours: license.offlineGraceHours,
             expiresAt: license.expiresAt,
           }

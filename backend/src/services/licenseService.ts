@@ -8,6 +8,12 @@ import { Company } from '../models/Company';
 import { SecurityPolicy } from '../models/SecurityPolicy';
 import { createAuditLog } from './auditService';
 import { UserRole } from '@krypton/shared';
+import {
+  calculateCompanyDeviceSeats,
+  getSeatsForDeviceCount,
+  syncCompanyDeviceSeats,
+  withDeviceSeatLock,
+} from './deviceSeatService';
 
 /**
  * Generates a cryptographically random, high-entropy enterprise license key.
@@ -47,9 +53,8 @@ export interface ActivationResult {
  * Enforces:
  * 1. License key validity, active status, and unexpired check
  * 2. User identity, membership, and active status
- * 3. Atomic seat increment if the user does NOT already have an allocated seat
- * 4. Stable seat assignment (reinstalls or new devices for the same user do not duplicate seats)
- * 5. Device count limit enforcement per user/plan
+ * 3. One license seat for every two active devices registered to the same user
+ * 4. No per-user device cap; company license capacity is enforced atomically
  * 6. Audit logging
  */
 export async function activateDesktopDevice(params: ActivationParams): Promise<ActivationResult> {
@@ -127,97 +132,72 @@ export async function activateDesktopDevice(params: ActivationParams): Promise<A
     };
   }
 
-  // 4. Atomic Seat Allocation
-  // If the user does not yet have an allocated seat, atomically claim one from the license
-  if (!user.hasLicenseSeat) {
-    const updatedLicense = await License.findOneAndUpdate(
-      {
-        _id: license._id,
-        status: 'active',
-        $expr: { $lt: ['$occupiedSeats', '$seatLimit'] },
-      },
-      {
-        $inc: { occupiedSeats: 1 },
-      },
-      { new: true }
-    );
-
-    if (!updatedLicense) {
-      return {
-        success: false,
-        error: `All ${license.seatLimit} purchased seats are currently occupied. Please request additional seats from your administrator.`,
-        statusCode: 409,
-      };
+  const activation = await withDeviceSeatLock(license._id, async (lockedLicense) => {
+    if (lockedLicense.status !== 'active' || lockedLicense.expiresAt <= new Date()) {
+      return { error: 'The company license is inactive or expired.' };
+    }
+    const existingDevice = await Device.findOne({
+      companyId: company!._id,
+      deviceId: params.deviceId,
+    });
+    if (existingDevice && existingDevice.userId.toString() !== user!._id.toString()) {
+      return { error: 'This device is already registered to another employee.' };
+    }
+    if (existingDevice?.status === 'revoked') {
+      return { error: 'This device was revoked by your administrator.' };
     }
 
-    user.hasLicenseSeat = true;
-    await user.save();
-
-    membership.hasSeat = true;
-    await membership.save();
-
-    await createAuditLog({
-      companyId: company._id,
-      actorId: user._id,
-      actorEmail: user.email,
-      actorRole: user.role,
-      action: 'SEAT_ALLOCATED_ATOMICALLY',
-      entityType: 'License',
-      entityId: license._id.toString(),
-      details: {
-        occupiedSeats: updatedLicense.occupiedSeats,
-        seatLimit: updatedLicense.seatLimit,
-        userId: user._id.toString(),
-      },
+    const activeDeviceCount = await Device.countDocuments({
+      userId: user!._id,
+      companyId: company!._id,
+      status: 'active',
     });
-  }
+    const occupiedSeats = await calculateCompanyDeviceSeats(company!._id);
+    const nextOccupiedSeats = occupiedSeats + (
+      existingDevice?.status === 'active'
+        ? 0
+        : getSeatsForDeviceCount(activeDeviceCount + 1) - getSeatsForDeviceCount(activeDeviceCount)
+    );
+    if (nextOccupiedSeats > lockedLicense.seatLimit) {
+      return { error: `No device license capacity available. Each two active devices use one license seat.` };
+    }
 
-  // 5. Device Registration & Limit Check
-  const maxDevices = license.maxDevicesPerUser || 2;
-  const existingDevices = await Device.find({
-    userId: user._id,
-    companyId: company._id,
-    status: 'active',
-  });
-
-  let device = await Device.findOne({
-    companyId: company._id,
-    deviceId: params.deviceId,
-  });
-
-  if (device) {
-    // Existing device re-activation / reconnection
+    const device = existingDevice || new Device({
+      companyId: company!._id,
+      userId: user!._id,
+      deviceId: params.deviceId,
+      deviceName: params.deviceName || 'Krypton Workstation',
+      platform: params.platform || 'unknown',
+      osVersion: params.osVersion || 'Unknown desktop OS',
+      appVersion: params.appVersion || '1.0.0',
+    });
     device.status = 'active';
-    device.userId = user._id as mongoose.Types.ObjectId;
+    device.userId = user!._id as mongoose.Types.ObjectId;
     device.deviceName = params.deviceName || device.deviceName;
     device.platform = params.platform || device.platform;
     device.osVersion = params.osVersion || device.osVersion;
     device.appVersion = params.appVersion || device.appVersion;
     device.lastHeartbeatAt = new Date();
     await device.save();
-  } else {
-    // Check if adding this new device exceeds device limit
-    if (existingDevices.length >= maxDevices) {
-      return {
-        success: false,
-        error: `Maximum allowed active devices (${maxDevices}) reached for this user account. Please revoke an unused device from your company dashboard.`,
-        statusCode: 403,
-      };
+
+    const needsSignInEnablement = !user!.hasLicenseSeat || !membership!.hasSeat;
+    if (needsSignInEnablement) {
+      user!.hasLicenseSeat = true;
+      membership!.hasSeat = true;
+      await Promise.all([user!.save(), membership!.save()]);
     }
 
-    device = await Device.create({
-      companyId: company._id,
-      userId: user._id,
-      deviceId: params.deviceId,
-      deviceName: params.deviceName || 'Krypton Workstation',
-      platform: params.platform || 'unknown',
-      osVersion: params.osVersion || 'Unknown desktop OS',
-      appVersion: params.appVersion || '1.0.0',
-      status: 'active',
-      lastHeartbeatAt: new Date(),
-      activatedAt: new Date(),
-    });
+    lockedLicense.occupiedSeats = await syncCompanyDeviceSeats(company!._id);
+    return { device, occupiedSeats: lockedLicense.occupiedSeats };
+  });
+  if (!activation) {
+    return { success: false, error: 'Device license allocation is busy. Please retry activation.', statusCode: 409 };
   }
+  if ('error' in activation) {
+    return { success: false, error: activation.error, statusCode: 409 };
+  }
+  const device = activation.device;
+  license.occupiedSeats = activation.occupiedSeats;
 
   // 6. Fetch company Security Policy
   const policy = await SecurityPolicy.findOne({ companyId: company._id });
@@ -260,25 +240,29 @@ export async function releaseSeatForUser(
     return false;
   }
 
-  // Decrement occupied seats atomically, ensuring it doesn't drop below 0
-  await License.findOneAndUpdate(
-    { companyId: new mongoose.Types.ObjectId(companyId), occupiedSeats: { $gt: 0 } },
-    { $inc: { occupiedSeats: -1 } }
-  );
-
-  user.hasLicenseSeat = false;
-  await user.save();
-
-  await Membership.findOneAndUpdate(
-    { userId: user._id, companyId: new mongoose.Types.ObjectId(companyId) },
-    { hasSeat: false }
-  );
-
-  // Revoke active devices for this user
-  await Device.updateMany(
-    { userId: user._id, companyId: new mongoose.Types.ObjectId(companyId), status: 'active' },
-    { status: 'revoked', revokedAt: new Date() }
-  );
+  const license = await License.findOne({ companyId: new mongoose.Types.ObjectId(companyId) });
+  const release = async () => {
+    user.hasLicenseSeat = false;
+    await user.save();
+    await Membership.findOneAndUpdate(
+      { userId: user._id, companyId: new mongoose.Types.ObjectId(companyId) },
+      { hasSeat: false }
+    );
+    await Device.updateMany(
+      { userId: user._id, companyId: new mongoose.Types.ObjectId(companyId), status: 'active' },
+      { status: 'revoked', revokedAt: new Date() }
+    );
+    await syncCompanyDeviceSeats(companyId);
+  };
+  if (license) {
+    const released = await withDeviceSeatLock(license._id, async () => {
+      await release();
+      return true;
+    });
+    if (!released) throw new Error('Device license allocation is busy. Please retry releasing this seat.');
+  } else {
+    await release();
+  }
 
   await createAuditLog({
     companyId,

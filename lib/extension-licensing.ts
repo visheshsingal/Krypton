@@ -51,11 +51,6 @@ export async function validateExtensionEntitlement(input: {
     }
   }
 
-  const activeDevices = await Device.countDocuments({ companyId, userId, status: 'active' });
-  if (activeDevices > (license.maxDevicesPerUser || 2)) {
-    return { ...base, valid: false, reason: 'device_revoked' };
-  }
-
   return { ...base, valid: true };
 }
 

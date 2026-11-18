@@ -25,7 +25,10 @@ export async function GET(req: NextRequest) {
 
     await connectDB();
     const companyId = new mongoose.Types.ObjectId(tenant.companyId);
-    const periodStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const requestedDays = Number(req.nextUrl.searchParams.get('days'));
+    const periodDays = [7, 30, 90].includes(requestedDays) ? requestedDays : 30;
+    const departmentFilter = req.nextUrl.searchParams.get('department')?.trim();
+    const periodStart = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000);
     const memberships = await Membership.find({
       companyId,
       role: 'employee',
@@ -50,7 +53,7 @@ export async function GET(req: NextRequest) {
         email: user.email,
         department: user.department?.trim() || 'Unassigned',
       }];
-    });
+    }).filter((employee) => !departmentFilter || employee.department === departmentFilter);
 
     const employeeIds = employees.map((employee) => new mongoose.Types.ObjectId(employee.userId));
     const events = employeeIds.length
@@ -119,14 +122,44 @@ export async function GET(req: NextRequest) {
       .sort((left, right) => right.score - left.score || left.name.localeCompare(right.name))
       .map((team, index) => ({ ...team, rank: index + 1 }));
 
+    const dailyTrend = new Map<string, {
+      interactions: number;
+      allow: number;
+      warn: number;
+      block: number;
+    }>();
+    const riskDistribution: Record<string, number> = {
+      LOW: 0,
+      MEDIUM: 0,
+      HIGH: 0,
+      CRITICAL: 0,
+    };
+    for (const event of scoredEvents) {
+      const day = new Date(event.timestamp).toISOString().slice(0, 10);
+      const dayStats = dailyTrend.get(day) || { interactions: 0, allow: 0, warn: 0, block: 0 };
+      dayStats.interactions++;
+      dayStats[event.actionTaken]++;
+      dailyTrend.set(day, dayStats);
+      if (riskDistribution[event.riskLevel] !== undefined) riskDistribution[event.riskLevel]++;
+    }
+
     return NextResponse.json({
       periodStart,
       periodEnd: new Date(),
+      periodDays,
+      departmentFilter: departmentFilter || null,
       coverageLimited,
       employees: scoredEmployees,
       teams: rankedTeams,
+      charts: {
+        dailyTrend: Array.from(dailyTrend.entries())
+          .map(([day, counts]) => ({ day, ...counts }))
+          .sort((left, right) => left.day.localeCompare(right.day)),
+        riskDistribution,
+      },
       summary: {
         ratedEmployees: rankedEmployees.length,
+        interactions: scoredEmployees.reduce((sum, employee) => sum + employee.interactions, 0),
         averageScore: rankedEmployees.length
           ? Math.round(rankedEmployees.reduce((sum, employee) => sum + (employee.score || 0), 0) / rankedEmployees.length)
           : null,

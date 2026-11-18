@@ -111,7 +111,7 @@ describe('Server-Authoritative Licensing & Concurrency-Safe Seat Allocation', ()
     await disconnectDatabase();
   });
 
-  test('1. First employee activates successfully and consumes 1 seat', async () => {
+  test('1. First paired device activates successfully and consumes 1 seat', async () => {
     const res = await activateDesktopDevice({
       licenseKey: testLicense.licenseKey,
       email: testUser1.email,
@@ -127,7 +127,7 @@ describe('Server-Authoritative Licensing & Concurrency-Safe Seat Allocation', ()
     expect(refreshedLicense?.occupiedSeats).toBe(1);
   });
 
-  test('2. Re-activation or second device for same employee does NOT consume an extra seat', async () => {
+  test('2. A second device for the same employee shares the first seat', async () => {
     const res = await activateDesktopDevice({
       licenseKey: testLicense.licenseKey,
       email: testUser1.email,
@@ -142,39 +142,46 @@ describe('Server-Authoritative Licensing & Concurrency-Safe Seat Allocation', ()
     expect(refreshedLicense?.occupiedSeats).toBe(1); // Still 1!
   });
 
-  test('3. Second employee activates and consumes the last remaining seat', async () => {
-    const res = await activateDesktopDevice({
+  test('3. Third and fourth devices consume exactly one additional seat', async () => {
+    const third = await activateDesktopDevice({
       licenseKey: testLicense.licenseKey,
-      email: testUser2.email,
+      email: testUser1.email,
       password: testPassword,
-      deviceId: 'TEST-DEV-002',
-      deviceName: 'Employee2-Laptop',
+      deviceId: 'TEST-DEV-001-C',
+      deviceName: 'Employee1-Tablet',
     });
-
-    expect(res.success).toBe(true);
+    expect(third.success).toBe(true);
+    const fourth = await activateDesktopDevice({
+      licenseKey: testLicense.licenseKey,
+      email: testUser1.email,
+      password: testPassword,
+      deviceId: 'TEST-DEV-001-D',
+      deviceName: 'Employee1-Phone',
+    });
+    expect(fourth.success).toBe(true);
 
     const refreshedLicense = await License.findById(testLicense._id);
     expect(refreshedLicense?.occupiedSeats).toBe(2);
   });
 
-  test('4. Third employee activation is REJECTED because seat limit (2) is exhausted', async () => {
+  test('4. A fifth device is rejected because its additional seat exceeds the license limit', async () => {
     const res = await activateDesktopDevice({
       licenseKey: testLicense.licenseKey,
-      email: testUser3.email,
+      email: testUser1.email,
       password: testPassword,
-      deviceId: 'TEST-DEV-003',
-      deviceName: 'Employee3-Laptop',
+      deviceId: 'TEST-DEV-001-E',
+      deviceName: 'Employee1-Extra',
     });
 
     expect(res.success).toBe(false);
     expect(res.statusCode).toBe(409);
-    expect(res.error).toMatch(/All 2 purchased seats are currently occupied/i);
+    expect(res.error).toMatch(/No device license capacity/i);
 
     const refreshedLicense = await License.findById(testLicense._id);
     expect(refreshedLicense?.occupiedSeats).toBe(2);
   });
 
-  test('5. Releasing seat for Employee 1 allows Employee 3 to claim the released seat', async () => {
+  test('5. Releasing Employee 1 devices frees seats for Employee 3', async () => {
     const released = await releaseSeatForUser(testCompany._id, testUser1._id, {
       id: testUser1._id.toString(),
       email: testUser1.email,
@@ -183,9 +190,8 @@ describe('Server-Authoritative Licensing & Concurrency-Safe Seat Allocation', ()
     expect(released).toBe(true);
 
     let refreshedLicense = await License.findById(testLicense._id);
-    expect(refreshedLicense?.occupiedSeats).toBe(1);
+    expect(refreshedLicense?.occupiedSeats).toBe(0);
 
-    // Now Employee 3 should be able to activate
     const res3 = await activateDesktopDevice({
       licenseKey: testLicense.licenseKey,
       email: testUser3.email,
@@ -197,6 +203,6 @@ describe('Server-Authoritative Licensing & Concurrency-Safe Seat Allocation', ()
     expect(res3.success).toBe(true);
 
     refreshedLicense = await License.findById(testLicense._id);
-    expect(refreshedLicense?.occupiedSeats).toBe(2);
+    expect(refreshedLicense?.occupiedSeats).toBe(1);
   });
 });

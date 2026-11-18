@@ -241,7 +241,7 @@ export async function seedDatabase() {
       licenseKey: demoLicenseKey,
       plan: 'business',
       seatLimit: 10,
-      occupiedSeats: 3, // Alex, Rahul, Sarah
+      occupiedSeats: 0,
       status: 'active',
       maxDevicesPerUser: 2,
       offlineGraceHours: 72,
@@ -250,7 +250,7 @@ export async function seedDatabase() {
     });
   } else {
     demoLicense.seatLimit = 10;
-    demoLicense.occupiedSeats = 3;
+    demoLicense.occupiedSeats = 0;
     demoLicense.status = 'active';
     demoLicense.licenseKey = demoLicenseKey;
     demoLicense.expiresAt = oneYearFromNow;

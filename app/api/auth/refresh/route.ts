@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
         hasSeat: true,
       }).select('_id');
       if (!user.hasLicenseSeat || !membership) {
-        return NextResponse.json({ error: 'A license seat is not assigned to this employee.' }, { status: 403 });
+        return NextResponse.json({ error: 'Sign-in access is not enabled for this employee.' }, { status: 403 });
       }
     }
 

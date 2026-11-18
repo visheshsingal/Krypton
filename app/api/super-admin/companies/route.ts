@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
         licenseKey,
         plan: 'starter',
         seatLimit,
-        occupiedSeats: 1,
+        occupiedSeats: 0,
         status: 'active',
         maxDevicesPerUser: 2,
         offlineGraceHours: 72,

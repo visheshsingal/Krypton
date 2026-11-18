@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
         seatLimit: result.license.seatLimit,
         occupiedSeats: result.license.occupiedSeats,
         status: result.license.status,
-        maxDevicesPerUser: result.license.maxDevicesPerUser,
+        devicesPerLicenseSeat: 2,
         offlineGraceHours: result.license.offlineGraceHours,
         expiresAt: result.license.expiresAt.toISOString(),
       },

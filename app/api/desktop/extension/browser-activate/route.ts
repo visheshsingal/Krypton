@@ -9,6 +9,12 @@ import { Company } from '@/models/Company';
 import { Membership } from '@/models/Membership';
 import { SecurityPolicy } from '@/models/SecurityPolicy';
 import { Subscription } from '@/models/Subscription';
+import {
+  calculateCompanyDeviceSeats,
+  getSeatsForDeviceCount,
+  syncCompanyDeviceSeats,
+  withDeviceSeatLock,
+} from '@/lib/device-seats';
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -89,34 +95,50 @@ export async function POST(req: NextRequest) {
       }, 409);
     }
 
-    const existingDevice = await Device.findOne({ companyId: license.companyId, userId: user._id, deviceId });
-    if (existingDevice?.status === 'revoked' && (!existingSession || existingSession.adminRevoked)) {
-      return jsonResponse({ error: 'This browser device was revoked by your company administrator.' }, 403);
-    }
+    const activation = await withDeviceSeatLock(license._id, async (lockedLicense) => {
+      const existingDevice = await Device.findOne({
+        companyId: license.companyId,
+        userId: user!._id,
+        deviceId,
+      });
+      if (existingDevice?.status === 'revoked' && (!existingSession || existingSession.adminRevoked)) {
+        return { error: 'This browser device was revoked by your company administrator.', status: 403 };
+      }
+      const activeDeviceCount = await Device.countDocuments({
+        companyId: license.companyId,
+        userId: user!._id,
+        status: 'active',
+      });
+      const occupiedSeats = await calculateCompanyDeviceSeats(license.companyId);
+      const nextOccupiedSeats = occupiedSeats + (
+        existingDevice?.status === 'active'
+          ? 0
+          : getSeatsForDeviceCount(activeDeviceCount + 1) - getSeatsForDeviceCount(activeDeviceCount)
+      );
+      if (nextOccupiedSeats > lockedLicense.seatLimit) {
+        return { error: 'No device license capacity available. Each two active devices use one license seat.', status: 403 };
+      }
 
-    const activeDeviceCount = await Device.countDocuments({
-      companyId: license.companyId,
-      userId: user._id,
-      status: 'active',
-    });
-    if (!existingDevice && activeDeviceCount >= (license.maxDevicesPerUser || 2)) {
-      return jsonResponse({ error: 'The company administrator account has reached its device limit.' }, 409);
-    }
-    const device = existingDevice || await Device.create({
-      companyId: license.companyId,
-      userId: user._id,
-      deviceId,
-      deviceName: `${browser === 'chrome' ? 'Chrome' : 'Edge'} browser`,
-      platform: 'macos-browser-extension',
-      osVersion: 'macOS browser extension',
-      appVersion: '1.0.0',
-      status: 'active',
-    });
-    if (device.status !== 'active') {
+      const device = existingDevice || new Device({
+        companyId: license.companyId,
+        userId: user!._id,
+        deviceId,
+        deviceName: `${browser === 'chrome' ? 'Chrome' : 'Edge'} browser`,
+        platform: 'macos-browser-extension',
+        osVersion: 'macOS browser extension',
+        appVersion: '1.0.0',
+      });
       device.status = 'active';
       device.revokedAt = undefined;
       await device.save();
+      lockedLicense.occupiedSeats = await syncCompanyDeviceSeats(license.companyId);
+      return { device, status: 200 };
+    });
+    if (!activation) {
+      return jsonResponse({ error: 'Device license allocation is busy. Please retry activation.' }, 409);
     }
+    if ('error' in activation) return jsonResponse({ error: activation.error }, activation.status);
+    const device = activation.device;
 
     const now = new Date();
     const sessionToken = crypto.randomBytes(32).toString('base64url');

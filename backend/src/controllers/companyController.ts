@@ -12,6 +12,11 @@ import { SecurityEvent } from '../models/SecurityEvent';
 import { AuditLog } from '../models/AuditLog';
 import { Invitation } from '../models/Invitation';
 import { releaseSeatForUser } from '../services/licenseService';
+import {
+  calculateCompanyDeviceSeats,
+  syncCompanyDeviceSeats,
+  withDeviceSeatLock,
+} from '../services/deviceSeatService';
 import { createAuditLog } from '../services/auditService';
 import { sendInvitationEmail } from '../services/emailService';
 
@@ -37,7 +42,13 @@ export async function getCompanyOverview(req: Request, res: Response): Promise<v
   }
 
   const seatLimit = license?.seatLimit || 0;
-  const occupiedSeats = license?.occupiedSeats || 0;
+  const occupiedSeats = license
+    ? await withDeviceSeatLock(license._id, async (lockedLicense) => {
+        const currentUsage = await syncCompanyDeviceSeats(companyId);
+        lockedLicense.occupiedSeats = currentUsage;
+        return currentUsage;
+      }) ?? await calculateCompanyDeviceSeats(companyId)
+    : 0;
   const availableSeats = Math.max(0, seatLimit - occupiedSeats);
 
   res.json({
@@ -59,7 +70,7 @@ export async function getCompanyOverview(req: Request, res: Response): Promise<v
           occupiedSeats,
           availableSeats,
           status: license.status,
-          maxDevicesPerUser: license.maxDevicesPerUser,
+          devicesPerLicenseSeat: 2,
           offlineGraceHours: license.offlineGraceHours,
           expiresAt: license.expiresAt,
         }

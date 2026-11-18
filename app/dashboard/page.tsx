@@ -25,6 +25,7 @@ import {
   Award,
   Activity,
   TrendingUp,
+  BarChart3,
   Search,
   Filter,
   Key,
@@ -52,6 +53,12 @@ export default function CompanyDashboard() {
   const [analytics, setAnalytics] = useState<any>(null);
   const [aiSafety, setAiSafety] = useState<any>(null);
   const [aiSafetySearch, setAiSafetySearch] = useState('');
+  const [showAiStats, setShowAiStats] = useState(false);
+  const [aiStatsDays, setAiStatsDays] = useState(30);
+  const [aiStatsDepartment, setAiStatsDepartment] = useState('');
+  const [aiStats, setAiStats] = useState<any>(null);
+  const [aiStatsLoading, setAiStatsLoading] = useState(false);
+  const [aiStatsError, setAiStatsError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'employees' | 'ai-safety' | 'license' | 'devices' | 'android' | 'incidents' | 'usb'>('overview');
   const [policySaveError, setPolicySaveError] = useState<string | null>(null);
 
@@ -123,6 +130,39 @@ export default function CompanyDashboard() {
 
     fetchCompanyData(token);
   }, []);
+
+  useEffect(() => {
+    if (!showAiStats) return;
+    const token = localStorage.getItem('krypton_token');
+    if (!token) {
+      setAiStatsError('Your session expired. Sign in again to view statistics.');
+      return;
+    }
+
+    const controller = new AbortController();
+    const query = new URLSearchParams({ days: String(aiStatsDays) });
+    if (aiStatsDepartment) query.set('department', aiStatsDepartment);
+    setAiStatsLoading(true);
+    setAiStatsError(null);
+    fetch(`/api/company/ai-safety?${query}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Could not load AI safety statistics.');
+        return data;
+      })
+      .then((data) => setAiStats(data))
+      .catch((error) => {
+        if (error.name !== 'AbortError') setAiStatsError(error.message || 'Could not load AI safety statistics.');
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setAiStatsLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [showAiStats, aiStatsDays, aiStatsDepartment]);
 
   const fetchCompanyData = async (token: string) => {
     setLoading(true);
@@ -251,7 +291,7 @@ export default function CompanyDashboard() {
       'Department': emp.department || '',
       'Designation': emp.designation || '',
       'System ID': emp.systemId || '',
-      'Seat Status': emp.hasSeat ? 'Licensed' : 'Unassigned',
+      'Sign-in Access': emp.hasSeat ? 'Enabled' : 'Disabled',
       'Active Devices': emp.deviceCount || 0,
       'Account Status': emp.isActive ? 'Active' : 'Deactivated',
       'Joined Date': emp.joinedAt ? new Date(emp.joinedAt).toLocaleDateString() : '',
@@ -363,7 +403,7 @@ export default function CompanyDashboard() {
 
       setImportMessage({
         type: 'success',
-        text: `Roster saved: ${data.summary?.created || 0} added, ${data.summary?.updated || 0} updated. No seats were assigned; select licensed employees in the directory.`,
+        text: `Roster saved: ${data.summary?.created || 0} added, ${data.summary?.updated || 0} updated. Sign-in remains disabled until you enable selected employees in the directory.`,
       });
 
       fetchCompanyData(token);
@@ -383,11 +423,13 @@ export default function CompanyDashboard() {
     if (!currentSeat) {
       const employee = employees.find((item) => item.userId === userId);
       if (!employee) return;
-      setSeatAssignmentEmployee(employee);
-      setSeatAssignmentPassword('');
-      setSeatAssignmentPasswordConfirm('');
-      setSeatAssignmentError(null);
-      return;
+      if (!employee.hasPasswordConfigured) {
+        setSeatAssignmentEmployee(employee);
+        setSeatAssignmentPassword('');
+        setSeatAssignmentPasswordConfirm('');
+        setSeatAssignmentError(null);
+        return;
+      }
     }
 
     const token = localStorage.getItem('krypton_token');
@@ -404,7 +446,7 @@ export default function CompanyDashboard() {
       });
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error || 'Failed to update license seat');
+        alert(data.error || 'Failed to update employee sign-in access');
         return;
       }
       fetchCompanyData(token);
@@ -431,7 +473,7 @@ export default function CompanyDashboard() {
 
     const token = localStorage.getItem('krypton_token');
     if (!token) {
-      setSeatAssignmentError('Please sign in again before assigning a license seat.');
+      setSeatAssignmentError('Please sign in again before enabling employee access.');
       return;
     }
 
@@ -445,18 +487,18 @@ export default function CompanyDashboard() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          hasLicenseSeat: true,
+          ...(!seatAssignmentEmployee.hasPasswordConfigured && { hasLicenseSeat: true }),
           password: seatAssignmentPassword,
         }),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Could not assign this license seat.');
+      if (!response.ok) throw new Error(result.error || 'Could not enable employee sign-in.');
       setSeatAssignmentEmployee(null);
       setSeatAssignmentPassword('');
       setSeatAssignmentPasswordConfirm('');
       await fetchCompanyData(token);
     } catch (error) {
-      setSeatAssignmentError(error instanceof Error ? error.message : 'Could not assign this license seat.');
+      setSeatAssignmentError(error instanceof Error ? error.message : 'Could not enable employee sign-in.');
     } finally {
       setSeatAssignmentLoading(false);
     }
@@ -581,7 +623,7 @@ export default function CompanyDashboard() {
   };
 
   const handleRemoveEmployee = async (userId: string) => {
-    if (!confirm('Remove this employee? Their active seat will be released atomically back to the pool.')) {
+    if (!confirm('Remove this employee? Their sign-in will be disabled and paired devices revoked.')) {
       return;
     }
     const token = localStorage.getItem('krypton_token');
@@ -844,6 +886,28 @@ export default function CompanyDashboard() {
       warn: entries.filter((entry: any) => entry.action === 'warn').reduce((sum: number, entry: any) => sum + entry.count, 0),
     };
   });
+  const aiStatsRiskLevels = [
+    { key: 'LOW', label: 'Low risk', color: '#34d399' },
+    { key: 'MEDIUM', label: 'Medium risk', color: '#38bdf8' },
+    { key: 'HIGH', label: 'High risk', color: '#fbbf24' },
+    { key: 'CRITICAL', label: 'Critical risk', color: '#fb7185' },
+  ];
+  const aiStatsRiskCounts = aiStatsRiskLevels.map((risk) => ({
+    ...risk,
+    count: aiStats?.charts?.riskDistribution?.[risk.key] || 0,
+  }));
+  const aiStatsRiskTotal = aiStatsRiskCounts.reduce((sum: number, risk) => sum + risk.count, 0);
+  let aiStatsRiskOffset = 0;
+  const aiStatsRiskGradient = aiStatsRiskTotal
+    ? `conic-gradient(${aiStatsRiskCounts.map((risk) => {
+        const start = aiStatsRiskOffset;
+        aiStatsRiskOffset += (risk.count / aiStatsRiskTotal) * 100;
+        return `${risk.color} ${start}% ${aiStatsRiskOffset}%`;
+      }).join(', ')})`
+    : 'conic-gradient(#334155 0% 100%)';
+  const aiStatsDailyTrend = aiStats?.charts?.dailyTrend || [];
+  const aiStatsMaxDaily = Math.max(1, ...aiStatsDailyTrend.map((day: any) => day.interactions));
+  const aiStatsTeams = aiStats?.teams || [];
   const trendMax = Math.max(1, ...trendDays.map((day) => day.block + day.allow + day.warn));
 
   return (
@@ -990,7 +1054,7 @@ export default function CompanyDashboard() {
               <div className="rounded-2xl border border-slate-800/80 bg-[#0b1220] p-5 sm:p-6 space-y-5">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                   <div>
-                    <span className="text-sm font-medium text-slate-300">Team seats</span>
+                    <span className="text-sm font-medium text-slate-300">Device licenses in use</span>
                     <div className="mt-1 text-3xl font-semibold tracking-tight text-white">
                       {license?.occupiedSeats || 0}{' '}
                       <span className="text-base font-normal text-slate-500">
@@ -1150,7 +1214,7 @@ export default function CompanyDashboard() {
                     <span>Employee Directory</span>
                   </h1>
                   <p className="mt-1 text-sm text-slate-400">
-                    Import employee rosters via Excel, manage departments, designations, system IDs, and license seats.
+                    Import employee rosters via Excel, manage departments, designations, system IDs, and sign-in access.
                   </p>
                 </div>
 
@@ -1221,15 +1285,15 @@ export default function CompanyDashboard() {
                     ))}
                   </select>
 
-                  {/* Seat Filter */}
+                  {/* Sign-in access filter */}
                   <select
                     value={seatFilter}
                     onChange={(e) => setSeatFilter(e.target.value as any)}
                     className="rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-2 text-xs text-slate-300 focus:border-sky-400 focus:outline-none"
                   >
-                    <option value="all">All Seats ({employees.length})</option>
-                    <option value="licensed">Licensed Seats ({employees.filter((e) => e.hasSeat).length})</option>
-                    <option value="unassigned">Unassigned ({employees.filter((e) => !e.hasSeat).length})</option>
+                    <option value="all">All Employees ({employees.length})</option>
+                    <option value="licensed">Sign-in Enabled ({employees.filter((e) => e.hasSeat).length})</option>
+                    <option value="unassigned">Sign-in Disabled ({employees.filter((e) => !e.hasSeat).length})</option>
                   </select>
 
                   {(teamSearch || selectedDepartment || seatFilter !== 'all') && (
@@ -1258,7 +1322,8 @@ export default function CompanyDashboard() {
                       <th className="p-4">Department</th>
                       <th className="p-4">Designation</th>
                       <th className="p-4">System ID</th>
-                      <th className="p-4">License Seat</th>
+                      <th className="p-4">Password</th>
+                      <th className="p-4">Sign-in Access</th>
                       <th className="p-4">AI Safety</th>
                       <th className="p-4">Devices</th>
                       <th className="p-4 text-right">Actions</th>
@@ -1267,7 +1332,7 @@ export default function CompanyDashboard() {
                   <tbody className="divide-y divide-slate-800/60">
                     {employees.length === 0 ? (
                       <tr>
-                        <td colSpan={10} className="p-12 text-center text-sm text-slate-500">
+                        <td colSpan={11} className="p-12 text-center text-sm text-slate-500">
                           <div className="max-w-md mx-auto space-y-3">
                             <Users className="w-8 h-8 mx-auto text-slate-600" />
                             <div className="font-semibold text-slate-300">No employees in workspace directory yet</div>
@@ -1293,7 +1358,7 @@ export default function CompanyDashboard() {
                       </tr>
                     ) : filteredEmployees.length === 0 ? (
                       <tr>
-                        <td colSpan={10} className="p-10 text-center text-sm text-slate-500">
+                        <td colSpan={11} className="p-10 text-center text-sm text-slate-500">
                           No team members match this search or filter.
                         </td>
                       </tr>
@@ -1352,32 +1417,43 @@ export default function CompanyDashboard() {
                           </td>
                           <td className="p-4">
                             {emp.role !== 'employee' ? (
+                              <span className="text-[10px] font-medium text-slate-500">—</span>
+                            ) : (
+                              <div className="flex flex-col items-start gap-1">
+                                <span className={`text-[10px] ${emp.hasPasswordConfigured ? 'text-emerald-400' : 'text-amber-300/80'}`}>
+                                  {emp.hasPasswordConfigured ? 'Password set' : 'Not set'}
+                                </span>
+                                <button
+                                  onClick={() => {
+                                    setSeatAssignmentEmployee(emp);
+                                    setSeatAssignmentPassword('');
+                                    setSeatAssignmentPasswordConfirm('');
+                                    setSeatAssignmentError(null);
+                                  }}
+                                  disabled={!emp.isActive}
+                                  className="text-[10px] font-medium text-sky-300 hover:text-sky-200 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                  {emp.hasPasswordConfigured ? 'Edit Password' : 'Set Password'}
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                          <td className="p-4">
+                            {emp.role !== 'employee' ? (
                               <span className="text-[10px] font-medium text-slate-500">Administrator account</span>
                             ) : emp.hasSeat ? (
                               <div className="flex flex-col items-start gap-1">
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 text-[10px] font-bold border border-emerald-500/30">
                                   <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                                  <span>Licensed · login enabled</span>
+                                  <span>Sign-in enabled</span>
                                 </span>
-                                <span className="text-[10px] text-slate-500">Username: {emp.email}</span>
                                 <div className="flex gap-2">
-                                  <button
-                                    onClick={() => {
-                                      setSeatAssignmentEmployee(emp);
-                                      setSeatAssignmentPassword('');
-                                      setSeatAssignmentPasswordConfirm('');
-                                      setSeatAssignmentError(null);
-                                    }}
-                                    className="text-[10px] font-medium text-sky-300 hover:text-sky-200"
-                                  >
-                                    Reset password
-                                  </button>
                                   <button
                                     onClick={() => handleToggleSeat(emp.userId, true)}
                                     className="text-[10px] font-medium text-slate-500 hover:text-red-300"
-                                    title="Release seat and disable employee sign-in"
+                                    title="Disable employee sign-in and revoke their paired devices"
                                   >
-                                    Release seat
+                                    Disable access
                                   </button>
                                 </div>
                               </div>
@@ -1385,13 +1461,13 @@ export default function CompanyDashboard() {
                               <div className="flex flex-col items-start gap-1">
                                 <button
                                   onClick={() => handleToggleSeat(emp.userId, false)}
-                                  disabled={!emp.isActive || (license?.availableSeats || 0) <= 0}
+                                  disabled={!emp.isActive}
                                   className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 text-[10px] font-medium border border-slate-700 hover:bg-sky-500/20 hover:text-sky-300 transition disabled:cursor-not-allowed disabled:opacity-40"
-                                  title={!emp.isActive ? 'Activate this employee before assigning a seat' : (license?.availableSeats || 0) <= 0 ? 'No seats available' : 'Set password and assign license seat'}
+                                  title={!emp.isActive ? 'Activate this employee before enabling sign-in' : 'Enable sign-in and set the employee password'}
                                 >
-                                  <span>Assign seat + set password</span>
+                                  <span>{emp.hasPasswordConfigured ? 'Enable sign-in' : 'Set password to enable sign-in'}</span>
                                 </button>
-                                <span className="text-[10px] text-amber-300/80">No seat · sign-in disabled</span>
+                                <span className="text-[10px] text-amber-300/80">Access disabled · no sign-in</span>
                               </div>
                             )}
                           </td>
@@ -1440,7 +1516,7 @@ export default function CompanyDashboard() {
                             <button
                               onClick={() => handleRemoveEmployee(emp.userId)}
                               className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded transition"
-                              title="Remove employee & release seat"
+                              title="Remove employee and revoke their paired devices"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -1484,7 +1560,17 @@ export default function CompanyDashboard() {
                     Recognize safe, consistent AI use and responsible responses to guidance.
                   </p>
                 </div>
-                <span className="text-xs text-slate-500">Rolling 30-day view</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-slate-500">Rolling 30-day view</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowAiStats(true)}
+                    className="inline-flex items-center gap-2 rounded-lg border border-sky-400/30 bg-sky-400/10 px-3 py-2 text-xs font-semibold text-sky-200 transition hover:border-sky-300/60 hover:bg-sky-400/15"
+                  >
+                    <BarChart3 className="h-4 w-4" />
+                    Stats
+                  </button>
+                </div>
               </div>
 
               {aiSafety?.coverageLimited && (
@@ -1649,7 +1735,7 @@ export default function CompanyDashboard() {
                   <span>Company License & Workstation Activation</span>
                 </h1>
                 <p className="mt-1 text-sm text-slate-400">
-                  Manage your organization&apos;s master license key, seat allocations, and employee workstation activation details.
+                  Manage your organization&apos;s master license key and paired-device license usage. Each pair of active devices for one employee uses one license; employees with no paired devices use none.
                 </p>
               </div>
 
@@ -1685,8 +1771,8 @@ export default function CompanyDashboard() {
 
                   <div className="grid grid-cols-2 gap-3 md:text-right text-xs">
                     <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-                      <div className="text-slate-500">Max Devices / User</div>
-                      <div className="mt-1 text-base font-bold text-white font-mono">{license?.maxDevicesPerUser || 2} workstations</div>
+                      <div className="text-slate-500">Devices per license</div>
+                        <div className="mt-1 text-base font-bold text-white font-mono">2 paired devices</div>
                     </div>
                     <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
                       <div className="text-slate-500">Offline Grace Period</div>
@@ -1699,8 +1785,8 @@ export default function CompanyDashboard() {
                 <div className="space-y-2 pt-2 border-t border-slate-800/80">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-medium text-slate-300">
-                      Seat Quota: <span className="text-white font-bold">{license?.occupiedSeats || 0}</span> occupied of{' '}
-                      <span className="text-white font-bold">{license?.seatLimit || 0}</span> total seats
+                      Device license quota: <span className="text-white font-bold">{license?.occupiedSeats || 0}</span> used of{' '}
+                      <span className="text-white font-bold">{license?.seatLimit || 0}</span> licenses
                     </span>
                     <span className="font-semibold text-sky-300">
                       {license?.availableSeats || 0} available remaining
@@ -1765,12 +1851,12 @@ export default function CompanyDashboard() {
                 </div>
               </div>
 
-              {/* Currently Licensed Employees */}
+              {/* Employees with sign-in enabled */}
               <div className="rounded-2xl border border-slate-800/80 bg-[#0b1220] p-6 space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h2 className="text-sm font-semibold text-white">Licensed Team Members ({employees.filter((e) => e.hasSeat).length})</h2>
-                    <p className="text-xs text-slate-400">Team members who are currently occupying a paid license seat.</p>
+                    <h2 className="text-sm font-semibold text-white">Enabled Team Members ({employees.filter((e) => e.hasSeat).length})</h2>
+                    <p className="text-xs text-slate-400">Sign-in access is enabled. Device license usage is based on active paired devices.</p>
                   </div>
                   <button
                     onClick={() => setActiveTab('employees')}
@@ -1789,14 +1875,14 @@ export default function CompanyDashboard() {
                         <th className="pb-3">Department</th>
                         <th className="pb-3">System ID</th>
                         <th className="pb-3">Active Devices</th>
-                        <th className="pb-3 text-right">Seat Action</th>
+                        <th className="pb-3 text-right">Access Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/60">
                       {employees.filter((e) => e.hasSeat).length === 0 ? (
                         <tr>
                           <td colSpan={6} className="py-8 text-center text-slate-500">
-                            No employees have been assigned a license seat yet.
+                            No employees have sign-in access yet.
                           </td>
                         </tr>
                       ) : (
@@ -1812,7 +1898,7 @@ export default function CompanyDashboard() {
                                 onClick={() => handleToggleSeat(emp.userId, true)}
                                 className="px-2.5 py-1 rounded bg-slate-800 hover:bg-red-500/10 text-slate-300 hover:text-red-400 text-[11px] border border-slate-700 transition"
                               >
-                                Revoke Seat
+                                Disable Access
                               </button>
                             </td>
                           </tr>
@@ -2417,6 +2503,209 @@ export default function CompanyDashboard() {
         </main>
       </div>
 
+      {showAiStats && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/85 p-3 backdrop-blur-sm sm:p-6"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setShowAiStats(false);
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ai-safety-stats-title"
+            className="flex max-h-[92vh] w-full max-w-7xl flex-col overflow-hidden rounded-2xl border border-slate-700 bg-[#080f1c] shadow-2xl"
+          >
+            <header className="flex flex-col gap-4 border-b border-slate-800 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-7">
+              <div>
+                <div className="flex items-center gap-2">
+                  <BarChart3 className="h-5 w-5 text-sky-300" />
+                  <h2 id="ai-safety-stats-title" className="text-lg font-semibold text-white">AI safety analytics</h2>
+                </div>
+                <p className="mt-1 text-xs text-slate-400">Filter the reporting window and team to explore interaction patterns.</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="sr-only" htmlFor="ai-stats-period">Reporting period</label>
+                <select
+                  id="ai-stats-period"
+                  value={aiStatsDays}
+                  onChange={(event) => setAiStatsDays(Number(event.target.value))}
+                  className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-200 outline-none focus:border-sky-400"
+                >
+                  <option value={7}>Last 7 days</option>
+                  <option value={30}>Last 30 days</option>
+                  <option value={90}>Last 90 days</option>
+                </select>
+                <label className="sr-only" htmlFor="ai-stats-department">Team filter</label>
+                <select
+                  id="ai-stats-department"
+                  value={aiStatsDepartment}
+                  onChange={(event) => setAiStatsDepartment(event.target.value)}
+                  className="max-w-48 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-200 outline-none focus:border-sky-400"
+                >
+                  <option value="">All teams</option>
+                  {availableDepartments.sort((left, right) => left.localeCompare(right)).map((department) => (
+                    <option key={department} value={department}>{department}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setShowAiStats(false)}
+                  aria-label="Close AI safety statistics"
+                  className="rounded-lg border border-slate-700 p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white"
+                >
+                  <XCircle className="h-4 w-4" />
+                </button>
+              </div>
+            </header>
+
+            <div className="overflow-y-auto p-5 sm:p-7">
+              {aiStatsError ? (
+                <div role="alert" className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-200">
+                  {aiStatsError}
+                </div>
+              ) : aiStatsLoading && !aiStats ? (
+                <div className="flex min-h-64 items-center justify-center gap-3 text-sm text-slate-400">
+                  <RefreshCw className="h-4 w-4 animate-spin text-sky-300" />
+                  Loading filtered statistics…
+                </div>
+              ) : (
+                <div className="space-y-5">
+                  {aiStats?.coverageLimited && (
+                    <p role="status" className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-xs text-amber-200">
+                      High event volume: charts reflect the latest 50,000 eligible events.
+                    </p>
+                  )}
+                  {aiStatsLoading && (
+                    <p aria-live="polite" className="text-right text-[11px] text-sky-300">Updating charts…</p>
+                  )}
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {[
+                      { label: 'AI interactions', value: aiStats?.summary?.interactions ?? 0 },
+                      { label: 'Average safety score', value: aiStats?.summary?.averageScore ?? '—' },
+                      { label: 'Warnings resolved', value: aiStats?.summary?.warningRecoveries ?? 0 },
+                    ].map((stat) => (
+                      <div key={stat.label} className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+                        <div className="text-xs text-slate-400">{stat.label}</div>
+                        <div className="mt-2 text-2xl font-semibold text-white">{stat.value}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(280px,0.8fr)]">
+                    <article className="min-w-0 rounded-xl border border-slate-800 bg-slate-900/40 p-4 sm:p-5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <h3 className="text-sm font-semibold text-white">Daily interaction trends</h3>
+                          <p className="mt-1 text-[11px] text-slate-500">Submissions grouped by outcome</p>
+                        </div>
+                        <div className="flex flex-wrap gap-3 text-[10px] text-slate-400">
+                          {[['allow', 'Allowed', '#34d399'], ['warn', 'Warned', '#fbbf24'], ['block', 'Blocked', '#fb7185']].map(([key, label, color]) => (
+                            <span key={key} className="inline-flex items-center gap-1">
+                              <span className="h-2 w-2 rounded-sm" style={{ backgroundColor: color }} />{label}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      {aiStatsDailyTrend.length ? (
+                        <div className="mt-5 overflow-x-auto pb-2">
+                          <div className="flex h-52 min-w-max items-end gap-1.5 border-b border-l border-slate-700 px-2">
+                            {aiStatsDailyTrend.map((day: any, index: number) => {
+                              const step = Math.max(1, Math.ceil(aiStatsDailyTrend.length / 10));
+                              const visibleDate = index % step === 0 || index === aiStatsDailyTrend.length - 1;
+                              return (
+                                <div key={day.day} className="flex h-full w-4 flex-col items-center justify-end sm:w-5">
+                                  <div
+                                    title={`${day.day}: ${day.interactions} interactions · ${day.allow} allowed · ${day.warn} warned · ${day.block} blocked`}
+                                    className="flex w-full flex-col-reverse overflow-hidden rounded-t-sm bg-slate-800/70 transition-opacity hover:opacity-80"
+                                    style={{ height: `${Math.max(2, (day.interactions / aiStatsMaxDaily) * 100)}%` }}
+                                  >
+                                    {[
+                                      { key: 'allow', color: '#34d399' },
+                                      { key: 'warn', color: '#fbbf24' },
+                                      { key: 'block', color: '#fb7185' },
+                                    ].map((segment) => (
+                                      <span
+                                        key={segment.key}
+                                        style={{
+                                          height: `${day.interactions ? (day[segment.key] / day.interactions) * 100 : 0}%`,
+                                          backgroundColor: segment.color,
+                                        }}
+                                      />
+                                    ))}
+                                  </div>
+                                  {visibleDate && (
+                                    <span className="mt-2 whitespace-nowrap text-[9px] text-slate-500">
+                                      {new Date(`${day.day}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="mt-8 rounded-lg border border-dashed border-slate-700 p-8 text-center text-xs text-slate-500">
+                          No interactions for the selected filters and period.
+                        </p>
+                      )}
+                    </article>
+
+                    <article className="rounded-xl border border-slate-800 bg-slate-900/40 p-4 sm:p-5">
+                      <h3 className="text-sm font-semibold text-white">Risk distribution</h3>
+                      <p className="mt-1 text-[11px] text-slate-500">Share of detected interaction risk levels</p>
+                      <div className="mt-5 flex flex-col items-center gap-5 sm:flex-row xl:flex-col 2xl:flex-row">
+                        <div className="relative h-36 w-36 shrink-0 rounded-full" style={{ background: aiStatsRiskGradient }}>
+                          <div className="absolute inset-4 flex flex-col items-center justify-center rounded-full bg-[#0b1220]">
+                            <span className="text-2xl font-bold text-white">{aiStatsRiskTotal}</span>
+                            <span className="text-[10px] text-slate-500">events</span>
+                          </div>
+                        </div>
+                        <div className="w-full space-y-3">
+                          {aiStatsRiskCounts.map((risk) => (
+                            <div key={risk.key} className="flex items-center justify-between gap-3 text-xs">
+                              <span className="inline-flex items-center gap-2 text-slate-300">
+                                <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: risk.color }} />
+                                {risk.label}
+                              </span>
+                              <span className="font-mono text-slate-400">
+                                {risk.count} · {aiStatsRiskTotal ? Math.round((risk.count / aiStatsRiskTotal) * 100) : 0}%
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </article>
+                  </div>
+
+                  <article className="rounded-xl border border-slate-800 bg-slate-900/40 p-4 sm:p-5">
+                    <h3 className="text-sm font-semibold text-white">Team safety score</h3>
+                    <p className="mt-1 text-[11px] text-slate-500">Average score among employees with recorded AI activity</p>
+                    {aiStatsTeams.length ? (
+                      <div className="mt-5 grid gap-x-8 gap-y-4 sm:grid-cols-2">
+                        {aiStatsTeams.map((team: any) => (
+                          <div key={team.name}>
+                            <div className="mb-1.5 flex items-center justify-between text-xs">
+                              <span className="truncate pr-3 text-slate-300">{team.name}</span>
+                              <span className="font-semibold text-sky-200">{team.score}/100</span>
+                            </div>
+                            <div className="h-2 overflow-hidden rounded-full bg-slate-800">
+                              <div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-sky-300" style={{ width: `${team.score}%` }} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-4 text-xs text-slate-500">No rated teams for the selected filters.</p>
+                    )}
+                  </article>
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+      )}
+
       {/* Excel / CSV Import Modal */}
       {showImportModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
@@ -2500,7 +2789,7 @@ export default function CompanyDashboard() {
             {/* Import summary */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-2 border-t border-slate-800">
               <p className="max-w-xl text-xs leading-5 text-slate-400">
-                Import adds roster records only. Choose exactly who receives a seat from the Employee Directory; set each selected employee&apos;s password during assignment.
+                Import adds roster records only. Enable sign-in for selected employees in the Employee Directory and set their passwords there.
               </p>
 
               <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
@@ -2651,7 +2940,7 @@ export default function CompanyDashboard() {
         </div>
       )}
 
-      {/* Assign employee license seat */}
+      {/* Set or edit employee password */}
       {seatAssignmentEmployee && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/85 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md space-y-5 rounded-2xl border border-sky-500/20 bg-[#0b1220] p-6 shadow-2xl shadow-sky-950/30">
@@ -2659,17 +2948,17 @@ export default function CompanyDashboard() {
               <div>
                 <h2 className="flex items-center gap-2 text-base font-bold text-white">
                   <Key className="h-4 w-4 text-sky-400" />
-                  {seatAssignmentEmployee.hasSeat ? 'Reset employee password' : 'Assign a license seat'}
+                  {seatAssignmentEmployee.hasPasswordConfigured ? 'Edit employee password' : 'Set employee password'}
                 </h2>
                 <p className="mt-2 text-xs text-slate-400">
-                  {seatAssignmentEmployee.hasSeat ? 'Set a new sign-in password for ' : 'This enables sign-in for '}
+                  {seatAssignmentEmployee.hasPasswordConfigured ? 'Choose a new password for ' : 'Set a password for '}
                   <span className="font-mono text-sky-300">{seatAssignmentEmployee.email}</span>.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setSeatAssignmentEmployee(null)}
-                aria-label="Close seat assignment dialog"
+                aria-label="Close employee access dialog"
                 className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white"
               >
                 <XCircle className="h-4 w-4" />
@@ -2713,6 +3002,7 @@ export default function CompanyDashboard() {
               </div>
               <p className="text-[11px] leading-5 text-slate-400">
                 Use a unique password, not their email. Share it with the employee securely; it is not sent by email.
+              {!seatAssignmentEmployee.hasPasswordConfigured && ' Setting this password will also enable sign-in.'}
               </p>
               {seatAssignmentError && (
                 <p role="alert" className="rounded-lg border border-red-900/70 bg-red-950/30 p-3 text-xs text-red-200">
@@ -2734,8 +3024,8 @@ export default function CompanyDashboard() {
                   className="rounded-xl bg-sky-500 px-4 py-2 text-xs font-bold text-slate-950 transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {seatAssignmentLoading
-                    ? (seatAssignmentEmployee.hasSeat ? 'Updating…' : 'Assigning…')
-                    : (seatAssignmentEmployee.hasSeat ? 'Reset password' : 'Set password & assign seat')}
+                    ? (seatAssignmentEmployee.hasPasswordConfigured ? 'Saving…' : 'Setting password…')
+                    : (seatAssignmentEmployee.hasPasswordConfigured ? 'Save Password' : 'Set Password')}
                 </button>
               </div>
             </form>
@@ -2847,7 +3137,7 @@ export default function CompanyDashboard() {
               </div>
 
               <p className="text-[11px] leading-5 text-slate-400">
-                Inviting an employee does not assign a seat. After they join, assign a seat from the directory and set their sign-in password.
+                Inviting an employee does not enable sign-in. After they join, enable access from the directory and set their sign-in password.
               </p>
 
               <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-800">

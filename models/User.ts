@@ -20,6 +20,7 @@ export interface IUser extends Document {
   systemId?: string;
   isActive: boolean;
   hasLicenseSeat: boolean;
+  passwordConfigured?: boolean;
   refreshTokens: IRefreshToken[];
   comparePassword(candidate: string): Promise<boolean>;
   createdAt: Date;
@@ -65,6 +66,7 @@ const UserSchema = new Schema<IUser>(
     systemId: { type: String, trim: true, index: true },
     isActive: { type: Boolean, default: true, index: true },
     hasLicenseSeat: { type: Boolean, default: false, index: true },
+    passwordConfigured: { type: Boolean },
     refreshTokens: [RefreshTokenSchema],
   },
   {

@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
         });
         if (!user.hasLicenseSeat || !membership) {
           return NextResponse.json(
-            { error: 'No license seat is assigned to this employee. Ask your company administrator to assign one.' },
+            { error: 'Sign-in access is not enabled for this employee. Ask your company administrator to enable it.' },
             { status: 403 }
           );
         }
