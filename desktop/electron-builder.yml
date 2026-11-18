@@ -41,7 +41,7 @@ dmg:
   format: ULFO
 
 nsis:
-  oneClick: false
+  oneClick: true
   perMachine: false
   allowElevation: false
   allowToChangeInstallationDirectory: false

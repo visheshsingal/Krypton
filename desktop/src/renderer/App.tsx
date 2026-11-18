@@ -61,6 +61,7 @@ type KryptonDesktopBridge = {
   downloadBrowserExtension: (browser: 'chrome' | 'edge') => Promise<{
     success: boolean;
     extensionDirectory?: string;
+    loadedInManagedProfile?: boolean;
     browserSettingsError?: string;
     error?: string;
   }>;
@@ -346,36 +347,38 @@ export default function App() {
         setExtensionError(result.error || 'Could not create an activation code.');
         return;
       }
-
-      async function handleDownloadExtension() {
-        if (!desktopBridge) return;
-        setExtensionDownloadLoading(true);
-        setExtensionDownloadMessage(null);
-        setExtensionError(null);
-        try {
-          const result = await desktopBridge.downloadBrowserExtension(selectedBrowser);
-          if (!result.success) {
-            setExtensionError(result.error || 'Could not download the extension package.');
-            return;
-          }
-          setExtensionDirectory(result.extensionDirectory || null);
-          setExtensionDownloadMessage(
-            result.browserSettingsError
-              ? `Extension extracted, but could not open browser settings: ${result.browserSettingsError}`
-              : `Extension extracted. ${selectedBrowser === 'chrome' ? 'Chrome' : 'Edge'} extensions page opened.`,
-          );
-        } catch (error) {
-          setExtensionError(error instanceof Error ? error.message : 'Could not download the extension package.');
-        } finally {
-          setExtensionDownloadLoading(false);
-        }
-      }
       setPairingCode(result.pairingCode);
       setPairingExpiresAt(result.expiresAt);
     } catch (error) {
       setExtensionError(error instanceof Error ? error.message : 'Could not create an activation code.');
     } finally {
       setPairingLoading(false);
+    }
+  }
+
+  async function handleDownloadExtension() {
+    if (!desktopBridge) return;
+    setExtensionDownloadLoading(true);
+    setExtensionDownloadMessage(null);
+    setExtensionError(null);
+    try {
+      const result = await desktopBridge.downloadBrowserExtension(selectedBrowser);
+      if (!result.success) {
+        setExtensionError(result.error || 'Could not download the extension package.');
+        return;
+      }
+      setExtensionDirectory(result.extensionDirectory || null);
+      setExtensionDownloadMessage(
+        result.loadedInManagedProfile
+          ? `Extension loaded automatically in Krypton's separate ${selectedBrowser === 'chrome' ? 'Chrome' : 'Edge'} profile.`
+          : result.browserSettingsError
+            ? `Extension prepared, but browser setup needs your attention: ${result.browserSettingsError}`
+            : `Extension prepared. In Chrome/Edge, enable Developer mode and choose “Load unpacked”.`,
+      );
+    } catch (error) {
+      setExtensionError(error instanceof Error ? error.message : 'Could not download the extension package.');
+    } finally {
+      setExtensionDownloadLoading(false);
     }
   }
 
@@ -676,7 +679,11 @@ export default function App() {
               disabled={extensionDownloadLoading}
               className="w-full rounded-lg border border-sky-300/20 bg-sky-400/10 px-4 py-2.5 text-sm font-semibold text-sky-100 transition-colors hover:bg-sky-400/20 disabled:cursor-wait disabled:opacity-50"
             >
-              {extensionDownloadLoading ? 'Preparing browser extension…' : 'Prepare extension in selected browser'}
+              {extensionDownloadLoading
+                ? 'Preparing browser extension…'
+                : deviceInfo?.platform === 'win32'
+                  ? 'Install extension in Krypton browser'
+                  : 'Prepare extension in selected browser'}
             </button>
             {extensionDownloadMessage && (
               <p role="status" className="text-xs text-emerald-300">{extensionDownloadMessage}</p>
@@ -688,14 +695,16 @@ export default function App() {
               </li>
               <li className="rounded-lg border border-slate-800/80 bg-slate-950/50 p-3">
                 <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-sky-300">02 · Add to browser</span>
-                Enable Developer mode, choose “Load unpacked”, and select the folder below.
+                {deviceInfo?.platform === 'win32'
+                  ? 'Krypton loads it automatically in its separate browser profile.'
+                  : 'Enable Developer mode, choose “Load unpacked”, and select the folder below.'}
               </li>
               <li className="rounded-lg border border-slate-800/80 bg-slate-950/50 p-3">
                 <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-sky-300">03 · Connect</span>
                 Generate a one-time code and enter it in the extension popup.
               </li>
             </ol>
-            {extensionDirectory && (
+            {extensionDirectory && deviceInfo?.platform !== 'win32' && (
               <div className="rounded-lg border border-slate-700 bg-slate-950 p-3">
                 <p className="mb-1 text-[11px] text-slate-500">Choose this folder in “Load unpacked”:</p>
                 <code className="block break-all text-xs text-sky-200">{extensionDirectory}</code>

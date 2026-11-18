@@ -36,6 +36,7 @@ type PageTarget = {
 type ManagedBrowserOptions = {
   browser: ManagedBrowserKind;
   profileRoot: string;
+  extensionDirectory?: string;
   scanner: PromptSecurityEngine;
   onSubmission: (
     result: PromptScanResult,
@@ -161,6 +162,18 @@ export function findManagedBrowserExecutable(
   return discovered && fs.existsSync(discovered) ? discovered : null;
 }
 
+export function createManagedBrowserArgs(profilePath: string, extensionDirectory?: string): string[] {
+  return [
+    '--remote-debugging-address=127.0.0.1',
+    '--remote-debugging-port=0',
+    `--user-data-dir=${profilePath}`,
+    ...(extensionDirectory ? [`--load-extension=${extensionDirectory}`] : []),
+    '--no-first-run',
+    '--no-default-browser-check',
+    'about:blank',
+  ];
+}
+
 class CdpConnection {
   private readonly socket: WebSocket;
   private nextId = 0;
@@ -262,6 +275,7 @@ class CdpConnection {
 export class ManagedBrowserSession {
   private readonly browser: ManagedBrowserKind;
   private readonly profilePath: string;
+  private readonly extensionDirectory?: string;
   private readonly scanner: PromptSecurityEngine;
   private readonly onSubmission: ManagedBrowserOptions['onSubmission'];
   private connection: CdpConnection | null = null;
@@ -272,6 +286,7 @@ export class ManagedBrowserSession {
   private constructor(options: ManagedBrowserOptions, profilePath: string) {
     this.browser = options.browser;
     this.profilePath = profilePath;
+    this.extensionDirectory = options.extensionDirectory;
     this.scanner = options.scanner;
     this.onSubmission = options.onSubmission;
   }
@@ -540,14 +555,7 @@ export class ManagedBrowserSession {
   }
 
   private async startBrowser(executable: string): Promise<string> {
-    const child = spawn(executable, [
-      '--remote-debugging-address=127.0.0.1',
-      '--remote-debugging-port=0',
-      `--user-data-dir=${this.profilePath}`,
-      '--no-first-run',
-      '--no-default-browser-check',
-      'about:blank',
-    ], {
+    const child = spawn(executable, createManagedBrowserArgs(this.profilePath, this.extensionDirectory), {
       detached: false,
       stdio: 'ignore',
       windowsHide: false,

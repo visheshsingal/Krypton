@@ -1,7 +1,22 @@
-import { extractRequestText, isAiPromptRequestUrl } from './managed-browser';
+import { createManagedBrowserArgs, extractRequestText, isAiPromptRequestUrl } from './managed-browser';
 import { PromptSecurityEngine } from '../engine/scanner';
 
 describe('managed browser request inspection', () => {
+  test('loads the prepared extension only in the isolated Krypton browser profile', () => {
+    expect(createManagedBrowserArgs('C:\\Krypton\\profile', 'C:\\Krypton\\extension')).toEqual([
+      '--remote-debugging-address=127.0.0.1',
+      '--remote-debugging-port=0',
+      '--user-data-dir=C:\\Krypton\\profile',
+      '--load-extension=C:\\Krypton\\extension',
+      '--no-first-run',
+      '--no-default-browser-check',
+      'about:blank',
+    ]);
+    expect(createManagedBrowserArgs('/Krypton/profile')).not.toContain(
+      '--load-extension=undefined',
+    );
+  });
+
   test('matches only supported HTTPS AI POST routes', () => {
     expect(isAiPromptRequestUrl('https://chatgpt.com/backend-api/conversation', 'POST')).toBe(true);
     expect(isAiPromptRequestUrl('https://api.openai.com/v1/responses', 'POST')).toBe(true);

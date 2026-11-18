@@ -20,6 +20,7 @@ export interface KryptonDesktopBridge {
   downloadBrowserExtension: (browser: 'chrome' | 'edge') => Promise<{
     success: boolean;
     extensionDirectory?: string;
+    loadedInManagedProfile?: boolean;
     browserSettingsError?: string;
     error?: string;
   }>;

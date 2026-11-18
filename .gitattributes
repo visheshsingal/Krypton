@@ -1,0 +1,2 @@
+public/downloads/Krypton-Security-Setup-1.0.1.exe filter=lfs diff=lfs merge=lfs -text
+public/downloads/Krypton-Windows-x64-1.0.1.zip filter=lfs diff=lfs merge=lfs -text

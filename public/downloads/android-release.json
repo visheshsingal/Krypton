@@ -1,0 +1,15 @@
+{
+  "available": true,
+  "version": "0.1.0",
+  "releaseStatus": "debug-test-build",
+  "packageName": "Krypton-Android-0.1.0-test.apk",
+  "downloadUrl": "/downloads/Krypton-Android-0.1.0-test.apk",
+  "fileSizeBytes": 53137,
+  "sha256Checksum": "b9254ab3bbf81d45ec559068f2a32a8fa4363d387ecc15991bd1445103e5023d",
+  "signatureStatus": "debug-keystore",
+  "limitations": [
+    "Test build only; not signed with a production release key.",
+    "AI prompt scanning is best-effort inside Krypton Secure Browser only.",
+    "Other Android apps, including native AI apps, are not monitored."
+  ]
+}

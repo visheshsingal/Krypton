@@ -1,0 +1,32 @@
+plugins {
+    id "com.android.application"
+}
+
+def apiBaseUrl = providers.gradleProperty("kryptonApiBaseUrl")
+    .orElse(providers.environmentVariable("KRYPTON_API_BASE_URL"))
+    .orElse("https://krypton-ten-theta.vercel.app/api")
+    .get()
+    .replaceAll('/+$', '')
+
+android {
+    namespace "com.kryptonsecurity.mobile"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "com.kryptonsecurity.mobile"
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName "0.1.0"
+        buildConfigField "String", "API_BASE_URL", "\"${apiBaseUrl}\""
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

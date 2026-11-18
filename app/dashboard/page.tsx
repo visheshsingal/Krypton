@@ -52,7 +52,7 @@ export default function CompanyDashboard() {
   const [analytics, setAnalytics] = useState<any>(null);
   const [aiSafety, setAiSafety] = useState<any>(null);
   const [aiSafetySearch, setAiSafetySearch] = useState('');
-  const [activeTab, setActiveTab] = useState<'overview' | 'employees' | 'ai-safety' | 'license' | 'devices' | 'incidents' | 'usb'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'employees' | 'ai-safety' | 'license' | 'devices' | 'android' | 'incidents' | 'usb'>('overview');
   const [policySaveError, setPolicySaveError] = useState<string | null>(null);
 
   // Filter state for incidents
@@ -817,6 +817,10 @@ export default function CompanyDashboard() {
     [dev.deviceName, dev.user?.name, dev.user?.email, dev.extension?.browser]
       .some((value) => String(value || '').toLowerCase().includes(deviceSearch.toLowerCase()))
   );
+  const androidDevices = devices.filter((device) => device.platform === 'android');
+  const displayedDevices = (activeTab === 'android'
+    ? filteredDevices.filter((device) => device.platform === 'android')
+    : filteredDevices);
   const filteredUsbEvents = usbEvents.filter((event) => {
     if (usbEventFilter && event.eventType !== usbEventFilter) return false;
     const term = usbSearch.trim().toLowerCase();
@@ -897,6 +901,7 @@ export default function CompanyDashboard() {
               { id: 'ai-safety', label: 'AI safety scores', icon: Award },
               { id: 'license', label: 'Company License', icon: Key },
               { id: 'devices', label: 'Devices', icon: Laptop },
+              { id: 'android', label: 'Android devices', icon: Laptop },
               { id: 'incidents', label: 'Activity', icon: AlertTriangle },
               { id: 'usb', label: 'USB activity', icon: HardDrive },
             ] as const).map(({ id, label, icon: Icon }) => (
@@ -1821,18 +1826,22 @@ export default function CompanyDashboard() {
           )}
 
           {/* TAB 3: DEVICES */}
-          {activeTab === 'devices' && (
+          {(activeTab === 'devices' || activeTab === 'android') && (
             <div className="mx-auto max-w-6xl space-y-6">
               <div>
-                <h1 className="text-2xl font-semibold tracking-tight text-white">Devices</h1>
+                <h1 className="text-2xl font-semibold tracking-tight text-white">
+                  {activeTab === 'android' ? 'Android devices' : 'Devices'}
+                </h1>
                 <p className="mt-1 text-sm text-slate-400">
-                  See connected devices and manage access.
+                  {activeTab === 'android'
+                    ? 'Manage enrolled Android phones. AI website protection currently applies inside the Krypton secure browser only.'
+                    : 'See connected devices and manage access.'}
                 </p>
               </div>
 
               <div className="relative max-w-md">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-                <input value={deviceSearch} onChange={(e) => setDeviceSearch(e.target.value)} placeholder="Search device, user, or browser" className="w-full rounded-xl border border-slate-800 bg-[#0b1220] py-2.5 pl-9 pr-3 text-sm text-white placeholder:text-slate-500 focus:border-sky-400 focus:outline-none" />
+                <input value={deviceSearch} onChange={(e) => setDeviceSearch(e.target.value)} placeholder="Search device or user" className="w-full rounded-xl border border-slate-800 bg-[#0b1220] py-2.5 pl-9 pr-3 text-sm text-white placeholder:text-slate-500 focus:border-sky-400 focus:outline-none" />
               </div>
               <div className="overflow-x-auto rounded-2xl border border-slate-800/80 bg-[#0b1220]">
                 <table className="w-full text-left text-xs">
@@ -1840,37 +1849,41 @@ export default function CompanyDashboard() {
                     <tr>
                       <th className="p-4">Device Name</th>
                       <th className="p-4">Assigned User</th>
-                      <th className="p-4">Browser Extension</th>
+                      <th className="p-4">{activeTab === 'android' ? 'Android app' : 'Protection'}</th>
                       <th className="p-4">Last active</th>
                       <th className="p-4">Status</th>
                       <th className="p-4 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60">
-                    {devices.length === 0 ? (
+                    {(activeTab === 'android' ? androidDevices.length : devices.length) === 0 ? (
                       <tr>
                         <td colSpan={6} className="p-10 text-center text-sm text-slate-500">
-                          No devices have connected yet.
+                          {activeTab === 'android' ? 'No Android devices have enrolled yet.' : 'No devices have connected yet.'}
                         </td>
                       </tr>
-                    ) : filteredDevices.length === 0 ? (
+                    ) : displayedDevices.length === 0 ? (
                       <tr><td colSpan={6} className="p-10 text-center text-sm text-slate-500">No devices match this search.</td></tr>
-                    ) : filteredDevices.map((dev) => (
+                    ) : displayedDevices.map((dev) => (
                       <tr key={dev.id} className="text-slate-300 hover:bg-slate-800/30">
                         <td className="p-4 font-bold text-white flex items-center space-x-2">
-                          <Laptop className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <Laptop className={`w-4 h-4 shrink-0 ${dev.platform === 'android' ? 'text-sky-400' : 'text-emerald-400'}`} />
                           <span>{dev.deviceName}</span>
                         </td>
                         <td className="p-4 text-slate-300">{dev.user?.name || dev.user?.email || 'N/A'}</td>
                         <td className="p-4 text-[11px]">
-                          <span className={dev.extension?.protectionActive ? 'text-emerald-300' : 'text-slate-500'}>
-                            {dev.extension?.status || 'Not Installed'}
-                          </span>
-                          {dev.extension?.browser && (
-                            <span className="ml-1 text-slate-500">
-                              ({dev.extension.browser === 'chrome' ? 'Chrome' : 'Edge'})
-                            </span>
-                          )}
+                          {dev.platform === 'android'
+                            ? <span className="text-sky-200">Krypton Android {dev.appVersion || ''}</span>
+                            : <>
+                              <span className={dev.extension?.protectionActive ? 'text-emerald-300' : 'text-slate-500'}>
+                                {dev.extension?.status || 'Not Installed'}
+                              </span>
+                              {dev.extension?.browser && (
+                                <span className="ml-1 text-slate-500">
+                                  ({dev.extension.browser === 'chrome' ? 'Chrome' : 'Edge'})
+                                </span>
+                              )}
+                            </>}
                         </td>
                         <td className="p-4 text-slate-500 font-mono text-[11px]">
                           {dev.lastHeartbeatAt ? new Date(dev.lastHeartbeatAt).toLocaleString() : '—'}

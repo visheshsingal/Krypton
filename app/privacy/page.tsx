@@ -32,14 +32,21 @@ export default function PrivacyPage() {
           </section>
 
           <section className="space-y-2">
-            <h2 className="text-lg font-bold text-slate-900">4. Multi-Tenant Isolation</h2>
+            <h2 className="text-lg font-bold text-slate-900">4. Android Test App</h2>
+            <p>
+              The Android test app registers the phone to the signed-in employee account, stores authentication tokens encrypted with the Android Keystore, and periodically checks device status and company policy. In its Krypton secure browser, supported AI-site prompts are scanned locally on a best-effort basis. By default, the app sends security-event metadata (such as site hostname, matched rule, risk level, action, and device identifier) but not raw prompt text. It does not monitor native AI apps or request Accessibility, screen-capture, VPN, or device-admin permissions. The Android app can use its last validated policy during the company's configured offline grace period; administrators can revoke its device registration.
+            </p>
+          </section>
+
+          <section className="space-y-2">
+            <h2 className="text-lg font-bold text-slate-900">5. Multi-Tenant Isolation</h2>
             <p>
               Company records, employee lists, device registrations, and security events are strictly isolated using tenant-scoped identifiers verified on every serverless execution. Cross-tenant data access is systematically prevented.
             </p>
           </section>
 
           <section className="space-y-2">
-            <h2 className="text-lg font-bold text-slate-900">5. Optional USB Activity Metadata</h2>
+            <h2 className="text-lg font-bold text-slate-900">6. Optional USB Activity Metadata</h2>
             <p>
               On supported Windows devices, employees may explicitly enable removable-drive monitoring in the desktop app. When enabled, Krypton may send drive connection changes and file names, extensions, sizes, timestamps, Windows account names, device identifiers, and destination paths to the employee’s company workspace. File contents are not read or uploaded. Windows user-mode notifications do not reliably identify the source path or verify copy completion, and events may be missed if the API is unreachable. Monitoring is off by default and can be disabled in the desktop app.
             </p>

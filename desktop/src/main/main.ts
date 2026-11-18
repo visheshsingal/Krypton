@@ -253,6 +253,14 @@ async function openProtectedBrowser(browserValue: unknown, siteValue: unknown) {
       browserSession = await ManagedBrowserSession.launch({
         browser: browserValue,
         profileRoot: path.join(app.getPath('userData'), 'protected-browser-profiles'),
+        extensionDirectory: fsSync.existsSync(path.join(
+          app.getPath('userData'),
+          'browser-extension',
+          browserValue,
+          'manifest.json',
+        ))
+          ? path.join(app.getPath('userData'), 'browser-extension', browserValue)
+          : undefined,
         scanner: securityEngine,
         onSubmission: (result, hostname, actionTaken, warningResponse) =>
           reportBrowserSubmission(browserValue, result, hostname, actionTaken, warningResponse),
@@ -393,20 +401,42 @@ function setupIpcHandlers() {
         await fs.rm(browserDirectory, { recursive: true, force: true });
         await fs.rename(stagingDirectory, browserDirectory);
         installedDirectory = true;
-        await openExtensionSettings(browserValue);
+        if (process.platform === 'win32') {
+          const existingSession = managedBrowserSessions.get(browserValue);
+          if (existingSession) {
+            await existingSession.close();
+            managedBrowserSessions.delete(browserValue);
+          }
+          const session = await ManagedBrowserSession.launch({
+            browser: browserValue,
+            profileRoot: path.join(app.getPath('userData'), 'protected-browser-profiles'),
+            extensionDirectory: browserDirectory,
+            scanner: securityEngine,
+            onSubmission: (result, hostname, actionTaken, warningResponse) =>
+              reportBrowserSubmission(browserValue, result, hostname, actionTaken, warningResponse),
+          });
+          managedBrowserSessions.set(browserValue, session);
+        } else {
+          await openExtensionSettings(browserValue);
+        }
       } catch (error) {
         await fs.rm(stagingDirectory, { recursive: true, force: true });
         if (installedDirectory) {
           return {
             success: true,
             extensionDirectory: browserDirectory,
+            loadedInManagedProfile: false,
             browserSettingsError: error instanceof Error ? error.message : 'Could not open browser extensions settings.',
           };
         }
         throw error;
       }
 
-      return { success: true, extensionDirectory: browserDirectory };
+      return {
+        success: true,
+        extensionDirectory: browserDirectory,
+        loadedInManagedProfile: process.platform === 'win32',
+      };
     } catch (error) {
       console.error('[ExtensionDownload] Could not download browser extension:', error);
       return {

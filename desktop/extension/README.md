@@ -18,14 +18,15 @@ The script bundles the desktop `PromptSecurityEngine` and built-in rules into `p
 
 Windows pairing is bound to the employee and registered desktop device that generated the code. macOS license-key activation is associated with the company administrator, not an individual employee, because the key alone cannot identify an employee. The browser is registered as a device under that administrator and counts against the existing per-user device limit; it does not create a separate seat.
 
-In the Krypton Desktop app, choose Chrome or Edge and click **Prepare extension in browser**. Krypton downloads the common ZIP, verifies its SHA-256 checksum, extracts it into the current user's application-data folder, and opens that browser's extensions page. This requires a rebuilt Desktop installer containing the setup flow.
+In Krypton Desktop on Windows, choose Chrome or Edge and click **Install extension in Krypton browser**. Krypton downloads and verifies the common ZIP, extracts it into the current user's application-data folder, and starts its separate Krypton-managed browser profile with the extension loaded. It does not change or install into the user's ordinary Chrome/Edge profiles. If that managed browser is already open, Krypton restarts it to load the prepared extension.
 
 ## Development or managed installation
 
-1. Install the common ZIP in Chrome or Edge using **Load unpacked** (the browser requires this one-time approval).
-2. On macOS, open the extension popup and enter only the company license key. On Windows, continue using Krypton Desktop to pair as before.
+1. For a Windows test, use **Install extension in Krypton browser** in Desktop; no Developer mode or folder selection is needed in that isolated profile.
+2. To test in an ordinary Chrome/Edge profile, install the common ZIP using **Load unpacked** (Developer mode and the browser's one-time approval are required).
+3. On macOS, open the extension popup and enter only the company license key. On Windows, continue using Krypton Desktop to pair as before.
 
-This free sideload method requires Developer mode and a one-time manual folder selection; browsers do not provide a supported API for a desktop app to approve or register an unpacked extension silently in a user's existing profile. It is not a consumer-friendly Chrome Web Store installation. A license key is a bearer credential: anyone who obtains it may attempt to register a browser under the company administrator until the key is rotated or the administrator revokes the license/browser.
+The isolated Windows test profile uses Chrome/Edge's command-line extension loading option and does not automate or alter the user's ordinary profile. Installing an unpacked extension in an ordinary profile still requires Developer mode and a one-time manual folder selection; a desktop app cannot silently approve it. This is not a consumer-friendly Chrome Web Store installation. A license key is a bearer credential: anyone who obtains it may attempt to register a browser under the company administrator until the key is rotated or the administrator revokes the license/browser.
 
 ### Local Mac testing
 

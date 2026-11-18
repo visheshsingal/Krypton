@@ -189,7 +189,7 @@ async function createWindowsPackage(installerPath, installerName, installerCheck
     'INSTALL',
     '1. Extract this ZIP to a folder on your PC.',
     `2. Run ${installerName}.`,
-    '3. Follow the setup wizard. Krypton installs for your Windows user and does not require administrator access.',
+    '3. Wait for the one-click installer to finish. Krypton installs for your Windows user and does not require administrator access.',
     '4. Launch Krypton from the Start menu or desktop shortcut and activate with your company credentials.',
     'If Krypton is already installed for this Windows user, run this same setup file to update it in place. Do not uninstall the existing version first; your settings and sign-in data are kept.',
     '',

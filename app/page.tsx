@@ -23,7 +23,7 @@ export default function HomePage() {
   const [prompt, setPrompt] = useState(demoPrompt);
   const windowsDownload = {
     available: windowsRelease.available,
-    downloadUrl: windowsRelease.downloadUrl || undefined,
+    downloadUrl: windowsRelease.installerDownloadUrl || undefined,
   };
   const [macDownloads, setMacDownloads] = useState<{
     available: boolean;
@@ -80,7 +80,7 @@ export default function HomePage() {
             </h1>
             <p className="mx-auto mt-6 max-w-2xl text-base leading-7 text-slate-400 sm:text-lg">
               Krypton scans supported AI prompts locally in Chrome and Edge using its shared browser extension.
-              On Mac, activate directly in the browser; Windows activation stays connected to Krypton Desktop.
+              The Android test app scans supported AI sites inside its secure browser only; native AI apps are not monitored.
             </p>
             <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row sm:flex-wrap">
               {showWindowsDownload ? (
@@ -90,7 +90,7 @@ export default function HomePage() {
                   className="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-400 px-6 py-3.5 text-sm font-semibold text-slate-950 shadow-[0_0_32px_rgba(56,189,248,0.2)] transition hover:bg-sky-300"
                 >
                   <Download className="h-4 w-4" />
-                  Download Windows package (.zip)
+                  Download Windows installer (.exe)
                 </a>
               ) : (
                 <span className="inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-6 py-3.5 text-sm font-semibold text-slate-500">
@@ -117,12 +117,15 @@ export default function HomePage() {
                     macOS Intel
                   </a>
                 </>
-              ) : (
-                <span className="inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-6 py-3.5 text-sm font-semibold text-slate-500" title="The signed macOS desktop installer has not been released.">
-                  <Download className="h-4 w-4" />
-                  macOS Desktop DMG not released
-                </span>
-              )}
+              ) : null}
+              <a
+                href="/downloads/Krypton-Android-0.1.0-test.apk"
+                download
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-300/30 bg-emerald-400/[0.08] px-6 py-3.5 text-sm font-semibold text-emerald-100 transition hover:border-emerald-300/60 hover:bg-emerald-400/[0.14]"
+              >
+                <Download className="h-4 w-4" />
+                Download Android APK
+              </a>
               <a
                 href="/downloads/krypton-browser-extension.zip"
                 download
@@ -139,9 +142,6 @@ export default function HomePage() {
                 <ArrowDown className="h-4 w-4 text-sky-300" />
               </a>
             </div>
-            <p className="mt-4 text-xs text-slate-500">
-              Windows setup is distributed as a ZIP · macOS Desktop installer is not released
-            </p>
           </div>
 
           <div className="mx-auto mt-16 max-w-3xl overflow-hidden rounded-2xl border border-sky-300/15 bg-[#070d17] shadow-[0_24px_100px_rgba(2,132,199,0.12)]">
@@ -311,7 +311,7 @@ export default function HomePage() {
                 className="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-400 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-sky-300"
               >
                 <Download className="h-4 w-4" />
-                Windows installer package (.zip)
+                Windows installer (.exe)
               </a>
             ) : (
               <span className="inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-5 py-3 text-sm font-semibold text-slate-500">
@@ -338,12 +338,15 @@ export default function HomePage() {
                   macOS Intel (.dmg)
                 </a>
               </>
-            ) : (
-              <span className="inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-5 py-3 text-sm font-semibold text-slate-500">
-                <Download className="h-4 w-4" />
-                macOS Desktop DMG not released
-              </span>
-            )}
+            ) : null}
+            <a
+              href="/downloads/Krypton-Android-0.1.0-test.apk"
+              download
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-300/30 bg-emerald-400/[0.08] px-5 py-3 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-400/[0.14]"
+            >
+              <Download className="h-4 w-4" />
+              Download Android APK
+            </a>
             <a
               href="/downloads/krypton-browser-extension.zip"
               download
@@ -355,11 +358,11 @@ export default function HomePage() {
           </div>
         </div>
         <div className="mx-auto mt-8 flex max-w-6xl flex-col justify-between gap-3 text-xs text-slate-500 sm:flex-row">
-          <span>Windows setup ZIP · macOS Desktop installer is not available · activation requires a valid company license</span>
+          <span>Windows single-file installer · activation requires a valid company license</span>
           <span>Download not starting? Check your browser&apos;s download settings.</span>
         </div>
         <p className="mx-auto mt-4 max-w-6xl text-xs leading-5 text-slate-500">
-          The extension ZIP is for Chrome/Edge developer or managed installation. It is not a macOS desktop DMG; that installer is not currently built and signed.
+          The extension ZIP is for Chrome/Edge developer or managed installation.
         </p>
       </section>
     </div>
