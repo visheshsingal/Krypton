@@ -8,7 +8,6 @@ import android.util.Base64;
 
 import java.nio.ByteBuffer;
 import java.security.KeyStore;
-import java.security.SecureRandom;
 
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
@@ -47,10 +46,12 @@ final class EncryptedState {
     }
 
     private String encrypt(String value) throws Exception {
-        byte[] iv = new byte[12];
-        new SecureRandom().nextBytes(iv);
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-        cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey(), new GCMParameterSpec(128, iv));
+        cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey());
+        byte[] iv = cipher.getIV();
+        if (iv == null || iv.length != 12) {
+            throw new IllegalStateException("Android Keystore returned an invalid encryption IV.");
+        }
         byte[] ciphertext = cipher.doFinal(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         ByteBuffer result = ByteBuffer.allocate(iv.length + ciphertext.length);
         result.put(iv);
