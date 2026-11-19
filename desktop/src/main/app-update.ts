@@ -8,6 +8,10 @@ export type WindowsReleaseManifest = {
   signatureStatus?: string;
 };
 
+export function getWindowsInstallerDownloadUrl(version: string): string {
+  return `https://media.githubusercontent.com/media/visheshsingal/Krypton/main/public/downloads/Krypton-Security-Setup-${version}.exe`;
+}
+
 export function compareAppVersions(currentVersion: string, latestVersion: string): number {
   const parse = (version: string): number[] | null => {
     if (!/^\d+\.\d+\.\d+$/.test(version)) return null;
@@ -43,7 +47,7 @@ export function parseWindowsReleaseManifest(value: unknown): WindowsReleaseManif
     manifest.architecture !== 'x64' ||
     !/^\d+\.\d+\.\d+$/.test(version) ||
     manifest.installerName !== installerName ||
-    installerDownloadUrl !== `/downloads/${installerName}` ||
+    installerDownloadUrl !== getWindowsInstallerDownloadUrl(version) ||
     !/^[a-f0-9]{64}$/i.test(installerSha256Checksum)
   ) {
     throw new Error('The latest Windows update is not available or its release information is invalid.');

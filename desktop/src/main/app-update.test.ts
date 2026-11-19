@@ -24,7 +24,7 @@ describe('parseWindowsReleaseManifest', () => {
     version: '1.2.3',
     architecture: 'x64',
     installerName: 'Krypton-Security-Setup-1.2.3.exe',
-    installerDownloadUrl: '/downloads/Krypton-Security-Setup-1.2.3.exe',
+    installerDownloadUrl: 'https://media.githubusercontent.com/media/visheshsingal/Krypton/main/public/downloads/Krypton-Security-Setup-1.2.3.exe',
     installerSha256Checksum: 'a'.repeat(64),
     signatureStatus: 'unsigned',
   };
@@ -33,8 +33,9 @@ describe('parseWindowsReleaseManifest', () => {
     expect(parseWindowsReleaseManifest(manifest)).toEqual(manifest);
   });
 
-  it('rejects external URLs, path traversal, and invalid checksums', () => {
+  it('rejects untrusted URLs, path traversal, and invalid checksums', () => {
     expect(() => parseWindowsReleaseManifest({ ...manifest, installerDownloadUrl: 'https://other.example/setup.exe' })).toThrow();
+    expect(() => parseWindowsReleaseManifest({ ...manifest, installerDownloadUrl: 'https://media.githubusercontent.com/media/visheshsingal/Krypton/main/public/downloads/other.exe' })).toThrow();
     expect(() => parseWindowsReleaseManifest({ ...manifest, installerName: '../setup.exe' })).toThrow();
     expect(() => parseWindowsReleaseManifest({ ...manifest, installerSha256Checksum: 'invalid' })).toThrow();
   });

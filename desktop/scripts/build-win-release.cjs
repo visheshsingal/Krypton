@@ -9,6 +9,7 @@ const releaseDir = path.join(desktopRoot, 'release');
 const downloadsDir = path.resolve(desktopRoot, '../public/downloads');
 const manifestPath = path.join(downloadsDir, 'windows-release.json');
 const backendManifestPath = path.resolve(desktopRoot, '../backend/src/config/windows-release.json');
+const githubLfsDownloadsBaseUrl = 'https://media.githubusercontent.com/media/visheshsingal/Krypton/main/public/downloads';
 const buildResourcesDir = path.join(desktopRoot, 'build-resources');
 const sidebarPath = path.join(buildResourcesDir, 'windows-installer-sidebar.bmp');
 const iconPath = path.join(buildResourcesDir, 'windows-icon.ico');
@@ -301,13 +302,13 @@ async function main() {
       version: packageJson.version,
       architecture: 'x64',
       packageName: packageInfo.packageName,
-      packageDownloadUrl: `/downloads/${packageInfo.packageName}`,
+      packageDownloadUrl: `${githubLfsDownloadsBaseUrl}/${packageInfo.packageName}`,
       packageSizeBytes: packageInfo.packageSize,
       packageSha256Checksum: packageInfo.packageChecksum,
       installerName,
       installerType: 'nsis',
-      installerDownloadUrl: `/downloads/${installerName}`,
-      downloadUrl: `/downloads/${packageInfo.packageName}`,
+      installerDownloadUrl: `${githubLfsDownloadsBaseUrl}/${installerName}`,
+      downloadUrl: `${githubLfsDownloadsBaseUrl}/${packageInfo.packageName}`,
       fileSizeBytes: packageInfo.packageSize,
       sha256Checksum: packageInfo.packageChecksum,
       installerSizeBytes: installerContents.length,

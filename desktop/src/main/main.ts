@@ -6,7 +6,12 @@ import path from 'path';
 import os from 'os';
 import { spawn } from 'node:child_process';
 import { DesktopStore } from './store';
-import { compareAppVersions, parseWindowsReleaseManifest, WindowsReleaseManifest } from './app-update';
+import {
+  compareAppVersions,
+  getWindowsInstallerDownloadUrl,
+  parseWindowsReleaseManifest,
+  WindowsReleaseManifest,
+} from './app-update';
 import { enumerateRemovableUsbVolumes, UsbActivityEvent, UsbDlpMonitor } from './usb-dlp-monitor';
 import { PromptSecurityEngine } from '../engine/scanner';
 import { SecurityPolicyDTO } from '@krypton/shared';
@@ -564,8 +569,8 @@ function setupIpcHandlers() {
     });
     if (confirmation.response !== 0) return { success: false, cancelled: true };
 
-    const installerUrl = new URL(release.installerDownloadUrl, productionWebsiteUrl);
-    if (installerUrl.origin !== productionWebsiteUrl || installerUrl.pathname !== `/downloads/${release.installerName}`) {
+    const installerUrl = new URL(release.installerDownloadUrl);
+    if (installerUrl.href !== getWindowsInstallerDownloadUrl(release.version)) {
       throw new Error('The update download location is invalid.');
     }
 
