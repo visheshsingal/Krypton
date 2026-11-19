@@ -94,6 +94,23 @@ describe('AI Prompt Security Engine - Local Deterministic Scanner', () => {
     expect(result.redactedPrompt).toContain('[REDACTED: PASSWORD_IN_PROMPT]');
   });
 
+  test('7b. Detects and blocks typical .env file with secrets and connection strings', () => {
+    const envFileContent = `
+PORT=3000
+DATABASE_URL=postgresql://admin:prodsecretpassword@localhost:5432/krypton_db
+JWT_SECRET=super_secret_jwt_token_key_12345
+OPENAI_API_KEY=sk-proj-abc1234567890def1234567890ghij
+`;
+    const result = engine.scan(envFileContent);
+
+    expect(result.hasRisk).toBe(true);
+    expect(result.action).toBe('block');
+    expect(result.highestRisk).toBe('CRITICAL');
+    expect(result.redactedPrompt).not.toContain('prodsecretpassword');
+    expect(result.redactedPrompt).not.toContain('super_secret_jwt_token_key_12345');
+    expect(result.redactedPrompt).not.toContain('sk-proj-abc1234567890def1234567890ghij');
+  });
+
   test('8. Supports company custom rules and keywords', () => {
     const customEngine = new PromptSecurityEngine([
       {

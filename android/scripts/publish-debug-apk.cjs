@@ -23,13 +23,10 @@ if (!output?.versionName || !Number.isInteger(output.versionCode)) {
 
 const apkName = `Krypton-Android-${output.versionName}-test.apk`;
 const destination = path.join(downloadsDir, apkName);
-const stableApkName = 'Krypton-Android-0.1.0-test.apk';
-const stableDestination = path.join(downloadsDir, stableApkName);
 
 fs.mkdirSync(downloadsDir, { recursive: true });
 fs.copyFileSync(apkPath, destination);
-fs.copyFileSync(apkPath, stableDestination);
-const apk = fs.readFileSync(stableDestination);
+const apk = fs.readFileSync(destination);
 if (apk.length < 4 || apk[0] !== 0x50 || apk[1] !== 0x4b) {
   throw new Error('The Android build output is not a valid APK archive.');
 }
@@ -41,8 +38,8 @@ fs.writeFileSync(
     version: output.versionName,
     versionCode: output.versionCode,
     releaseStatus: 'debug-test-build',
-    packageName: stableApkName,
-    downloadUrl: `/downloads/${stableApkName}`,
+    packageName: apkName,
+    downloadUrl: `/downloads/${apkName}`,
     fileSizeBytes: apk.length,
     sha256Checksum: crypto.createHash('sha256').update(apk).digest('hex'),
     signatureStatus: 'debug-keystore',
@@ -56,4 +53,3 @@ fs.writeFileSync(
 );
 
 console.log(`Published Android test APK: ${destination} (${apk.length} bytes)`);
-console.log(`Updated existing Android download URL: ${stableDestination}`);

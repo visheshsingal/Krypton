@@ -43,6 +43,10 @@ export interface KryptonDesktopBridge {
     signatureStatus?: string;
   }>;
   installUpdate: () => Promise<{ success: boolean; cancelled?: boolean; error?: string }>;
+  getWindowsProtectionSummary: () => Promise<any>;
+  toggleWindowsProtection: (enabled: boolean) => Promise<{ success: boolean; active: boolean }>;
+  toggleWindowsTarget: (targetId: string, enabled: boolean) => Promise<{ success: boolean }>;
+  inspectText: (text: string) => Promise<any>;
 }
 
 const bridge: KryptonDesktopBridge = {
@@ -65,6 +69,10 @@ const bridge: KryptonDesktopBridge = {
   getAppVersion: () => ipcRenderer.invoke('desktop:get-version'),
   checkForUpdates: () => ipcRenderer.invoke('desktop:check-for-updates'),
   installUpdate: () => ipcRenderer.invoke('desktop:install-update'),
+  getWindowsProtectionSummary: () => ipcRenderer.invoke('desktop:get-windows-protection-summary'),
+  toggleWindowsProtection: (enabled) => ipcRenderer.invoke('desktop:toggle-windows-protection', enabled),
+  toggleWindowsTarget: (targetId, enabled) => ipcRenderer.invoke('desktop:toggle-windows-target', targetId, enabled),
+  inspectText: (text) => ipcRenderer.invoke('desktop:inspect-text', text),
 };
 
 contextBridge.exposeInMainWorld('kryptonDesktop', bridge);

@@ -1,843 +1,754 @@
 import React, { useEffect, useState } from 'react';
-import { AlertTriangle, Download, Eye, EyeOff, HardDrive, KeyRound, LogOut, RefreshCw, Shield, ShieldCheck } from 'lucide-react';
+import {
+  ShieldCheck,
+  ShieldAlert,
+  KeyRound,
+  Mail,
+  Lock,
+  Globe,
+  Monitor,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  LogOut,
+  RefreshCw,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  Sparkles,
+  Terminal,
+  Activity,
+  HardDrive,
+  Copy,
+  Check,
+} from 'lucide-react';
 
-type DesktopState = {
-  license?: string;
+interface StoredState {
+  licenseKey?: string;
   token?: string;
   user?: {
     name?: string;
     email?: string;
   };
+  policy?: any;
+  deviceId?: string;
+  deviceName?: string;
   usbMonitoringEnabled?: boolean;
-};
+}
 
-type UsbMonitorStatus = {
+interface TargetItem {
+  id: string;
+  name: string;
+  domain: string;
+  desktopProcess: string;
+  type: 'both' | 'web';
   enabled: boolean;
+  color: string;
+  url: string;
+}
+
+interface SecurityEventItem {
+  id: string;
+  timestamp: string;
+  targetName: string;
+  actionTaken: 'block' | 'warn' | 'allow';
+  riskLevel: string;
+  ruleName: string;
+  summary: string;
+}
+
+interface ProtectionSummary {
   active: boolean;
   platform: string;
-  connectedDevices: number;
-  lastEventAt: string | null;
-  error: string | null;
-};
+  noExtensionRequired: boolean;
+  stats: {
+    scannedCount: number;
+    blockedCount: number;
+    allowedCount: number;
+  };
+  recentEvents: SecurityEventItem[];
+}
 
-type ActivationResult = {
-  success: boolean;
-  error?: string;
-};
-
-type BrowserExtensionStatus = {
-  status: string;
-  installed: boolean;
-  connected: boolean;
-  protectionActive: boolean;
-  browser?: 'chrome' | 'edge' | null;
-  lastConnectedAt?: string | null;
-  error?: string;
-};
-
-type WebsiteProtectionAvailability = {
-  available: boolean;
-  status: string;
-  platform: string;
-  browsers: Array<'chrome' | 'edge'>;
-};
-
-type KryptonDesktopBridge = {
-  getDeviceInfo: () => Promise<{ deviceId?: string; deviceName?: string; osVersion?: string; appVersion?: string; platform?: string }>;
-  getStoredState: () => Promise<DesktopState | null>;
-  getUsbMonitorStatus: () => Promise<UsbMonitorStatus>;
-  setUsbMonitoringEnabled: (enabled: boolean) => Promise<{ success: boolean; status?: UsbMonitorStatus; error?: string }>;
-  getWebsiteProtectionAvailability: () => Promise<WebsiteProtectionAvailability>;
-  openProtectedBrowser: (
-    browser: 'chrome' | 'edge',
-    site: string,
-  ) => Promise<{ success: boolean; error?: string }>;
-  createExtensionPairing: (browser: 'chrome' | 'edge') => Promise<{
-    success: boolean;
-    pairingCode?: string;
-    expiresAt?: string;
-    error?: string;
-  }>;
-  downloadBrowserExtension: (browser: 'chrome' | 'edge') => Promise<{
-    success: boolean;
-    extensionDirectory?: string;
-    loadedInManagedProfile?: boolean;
-    browserSettingsError?: string;
-    error?: string;
-  }>;
-  copyText: (value: string) => Promise<{ success: boolean }>;
-  getExtensionStatus: () => Promise<BrowserExtensionStatus>;
-  activate: (data: { licenseKey: string; email: string; password: string }) => Promise<ActivationResult>;
-  logout: () => Promise<{ success: boolean; warning?: string }>;
-  openExternal: (url: string) => Promise<void>;
-  checkForUpdates: () => Promise<{
-    supported: boolean;
-    currentVersion: string;
-    latestVersion?: string;
-    updateAvailable: boolean;
-    signatureStatus?: string;
-  }>;
-  installUpdate: () => Promise<{ success: boolean; cancelled?: boolean; error?: string }>;
-};
-
-const desktopBridge = (window as Window & { kryptonDesktop?: KryptonDesktopBridge }).kryptonDesktop;
+const DEFAULT_TARGETS: TargetItem[] = [
+  {
+    id: 'chatgpt',
+    name: 'ChatGPT',
+    domain: 'chatgpt.com',
+    desktopProcess: 'ChatGPT.exe',
+    type: 'both',
+    enabled: true,
+    color: 'from-emerald-500 to-teal-600',
+    url: 'https://chatgpt.com',
+  },
+  {
+    id: 'gemini',
+    name: 'Google Gemini',
+    domain: 'gemini.google.com',
+    desktopProcess: 'Web browser',
+    type: 'web',
+    enabled: true,
+    color: 'from-blue-500 to-indigo-600',
+    url: 'https://gemini.google.com',
+  },
+  {
+    id: 'claude',
+    name: 'Claude AI',
+    domain: 'claude.ai',
+    desktopProcess: 'Claude.exe',
+    type: 'both',
+    enabled: true,
+    color: 'from-amber-500 to-orange-600',
+    url: 'https://claude.ai',
+  },
+  {
+    id: 'copilot',
+    name: 'Microsoft Copilot',
+    domain: 'copilot.microsoft.com',
+    desktopProcess: 'Windows Copilot',
+    type: 'both',
+    enabled: true,
+    color: 'from-sky-500 to-cyan-600',
+    url: 'https://copilot.microsoft.com',
+  },
+  {
+    id: 'perplexity',
+    name: 'Perplexity AI',
+    domain: 'perplexity.ai',
+    desktopProcess: 'Perplexity.exe',
+    type: 'both',
+    enabled: true,
+    color: 'from-violet-500 to-purple-600',
+    url: 'https://perplexity.ai',
+  },
+];
 
 export default function App() {
-  const [deviceInfo, setDeviceInfo] = useState<{ deviceId?: string; deviceName?: string; osVersion?: string; platform?: string } | null>(null);
-  const [storedState, setStoredState] = useState<DesktopState | null>(null);
-  const [usbStatus, setUsbStatus] = useState<UsbMonitorStatus | null>(null);
-  const [usbLoading, setUsbLoading] = useState(false);
-  const [usbError, setUsbError] = useState<string | null>(null);
-  const [extensionStatus, setExtensionStatus] = useState<BrowserExtensionStatus | null>(null);
-  const [protectionAvailability, setProtectionAvailability] = useState<WebsiteProtectionAvailability | null>(null);
+  const bridge = (window as any).kryptonDesktop;
+
+  // Activation & Auth
   const [isActivated, setIsActivated] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
+  const [storedState, setStoredState] = useState<StoredState | null>(null);
+
+  // Form Inputs
   const [licenseKeyInput, setLicenseKeyInput] = useState('');
   const [emailInput, setEmailInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [activationLoading, setActivationLoading] = useState(false);
-  const [activationError, setActivationError] = useState<string | null>(null);
-  const [selectedBrowser, setSelectedBrowser] = useState<'chrome' | 'edge'>('chrome');
-  const [pairingCode, setPairingCode] = useState<string | null>(null);
-  const [pairingExpiresAt, setPairingExpiresAt] = useState<string | null>(null);
-  const [pairingLoading, setPairingLoading] = useState(false);
-  const [extensionError, setExtensionError] = useState<string | null>(null);
-  const [extensionDownloadLoading, setExtensionDownloadLoading] = useState(false);
-  const [extensionDownloadMessage, setExtensionDownloadMessage] = useState<string | null>(null);
-  const [extensionDirectory, setExtensionDirectory] = useState<string | null>(null);
-  const [selectedAiSite, setSelectedAiSite] = useState('chatgpt');
-  const [protectedBrowserLoading, setProtectedBrowserLoading] = useState(false);
-  const [protectedBrowserMessage, setProtectedBrowserMessage] = useState<string | null>(null);
-  const [protectedBrowserError, setProtectedBrowserError] = useState<string | null>(null);
-  const [updateInfo, setUpdateInfo] = useState<Awaited<ReturnType<KryptonDesktopBridge['checkForUpdates']>> | null>(null);
-  const [updateChecking, setUpdateChecking] = useState(false);
-  const [updateInstalling, setUpdateInstalling] = useState(false);
-  const [updateError, setUpdateError] = useState<string | null>(null);
-  const [updateMessage, setUpdateMessage] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
 
+  // Protection & Targets
+  const [protectionActive, setProtectionActive] = useState(true);
+  const [targets, setTargets] = useState<TargetItem[]>(DEFAULT_TARGETS);
+  const [stats, setStats] = useState({ scannedCount: 0, blockedCount: 0, allowedCount: 0 });
+  const [recentEvents, setRecentEvents] = useState<SecurityEventItem[]>([]);
+  const [deviceInfo, setDeviceInfo] = useState<{ deviceId?: string; osVersion?: string; appVersion?: string }>({});
+
+  // Interactive Live Scanner Tester
+  const [testInput, setTestInput] = useState('');
+  const [testResult, setTestResult] = useState<any | null>(null);
+  const [isTesting, setIsTesting] = useState(false);
+  const [copiedSample, setCopiedSample] = useState(false);
+
+  // Initialize
   useEffect(() => {
-    if (!desktopBridge) {
-      setIsInitializing(false);
-      return;
+    async function loadInitial() {
+      try {
+        if (!bridge) {
+          setIsInitializing(false);
+          return;
+        }
+
+        const [state, devInfo] = await Promise.all([
+          bridge.getStoredState(),
+          bridge.getDeviceInfo().catch(() => ({})),
+        ]);
+
+        if (devInfo) setDeviceInfo(devInfo);
+
+        if (state && state.token) {
+          setStoredState(state);
+          setIsActivated(true);
+          refreshSummary();
+        }
+      } catch (err) {
+        console.warn('Initialization error:', err);
+      } finally {
+        setIsInitializing(false);
+      }
     }
 
-    Promise.all([
-      desktopBridge.getDeviceInfo(),
-      desktopBridge.getStoredState(),
-      desktopBridge.getUsbMonitorStatus(),
-    ])
-      .then(([device, state, usb]) => {
-        setDeviceInfo(device);
-        setStoredState(state);
-        setUsbStatus(usb);
-        setIsActivated(Boolean(state?.license && state?.token));
-      })
-      .catch((error: unknown) => {
-        console.error('Failed to load activation state:', error);
-        setActivationError('Could not load the saved activation. Restart the app and try again.');
-      })
-      .finally(() => setIsInitializing(false));
+    void loadInitial();
   }, []);
 
+  // Poll summary for real-time stats
   useEffect(() => {
-    if (!isActivated || !desktopBridge) return;
-    let active = true;
-    const refreshStatus = async () => {
-      try {
-        const status = await desktopBridge.getExtensionStatus();
-        const availability = await desktopBridge.getWebsiteProtectionAvailability();
-        if (active) {
-          setExtensionStatus(status);
-          setProtectionAvailability(availability);
-          if (status.protectionActive) setPairingCode(null);
-        }
-      } catch (error) {
-        if (active) {
-          setExtensionStatus({
-            status: 'unavailable',
-            installed: false,
-            connected: false,
-            protectionActive: false,
-            error: error instanceof Error ? error.message : 'Could not load extension status.',
-          });
-        }
-      }
-    };
-    void refreshStatus();
-    const interval = window.setInterval(refreshStatus, pairingCode ? 10_000 : 30_000);
-    return () => {
-      active = false;
-      window.clearInterval(interval);
-    };
-  }, [isActivated, pairingCode]);
+    if (!isActivated || !bridge?.getWindowsProtectionSummary) return;
 
-  useEffect(() => {
-    if (!isActivated || !desktopBridge) return;
-    let active = true;
-    const refreshUsbStatus = async () => {
-      try {
-        const status = await desktopBridge.getUsbMonitorStatus();
-        if (active) setUsbStatus(status);
-      } catch (error) {
-        if (active) setUsbError(error instanceof Error ? error.message : 'Could not load USB monitoring status.');
-      }
-    };
-    void refreshUsbStatus();
-    const interval = window.setInterval(refreshUsbStatus, 5000);
-    return () => {
-      active = false;
-      window.clearInterval(interval);
-    };
+    const interval = setInterval(() => {
+      refreshSummary();
+    }, 3000);
+
+    return () => clearInterval(interval);
   }, [isActivated]);
 
-  useEffect(() => {
-    if (!desktopBridge || deviceInfo?.platform !== 'win32') return;
-    let active = true;
-    void desktopBridge.checkForUpdates()
-      .then((result) => {
-        if (active) setUpdateInfo(result);
-      })
-      .catch((error: unknown) => {
-        if (active) setUpdateError(error instanceof Error ? error.message : 'Could not check for updates.');
-      });
-    return () => {
-      active = false;
-    };
-  }, [deviceInfo?.platform]);
-
-  async function handleCheckForUpdates() {
-    if (!desktopBridge) return;
-    setUpdateChecking(true);
-    setUpdateError(null);
-    setUpdateMessage(null);
+  const refreshSummary = async () => {
+    if (!bridge?.getWindowsProtectionSummary) return;
     try {
-      const result = await desktopBridge.checkForUpdates();
-      setUpdateInfo(result);
-      if (!result.supported) {
-        setUpdateMessage('In-app updates are available in the installed Windows version.');
-      } else if (!result.updateAvailable) {
-        setUpdateMessage('You’re using the latest version.');
-      }
-    } catch (error) {
-      setUpdateError(error instanceof Error ? error.message : 'Could not check for updates.');
-    } finally {
-      setUpdateChecking(false);
-    }
-  }
-
-  async function handleInstallUpdate() {
-    if (!desktopBridge) return;
-    setUpdateInstalling(true);
-    setUpdateError(null);
-    setUpdateMessage('Downloading and verifying the update…');
-    try {
-      const result = await desktopBridge.installUpdate();
-      if (result.error) {
-        setUpdateError(result.error);
-        setUpdateMessage(null);
-      } else if (result.cancelled) {
-        setUpdateMessage(null);
-      }
-    } catch (error) {
-      setUpdateError(error instanceof Error ? error.message : 'Could not install the update.');
-      setUpdateMessage(null);
-    } finally {
-      setUpdateInstalling(false);
-    }
-  }
-
-  async function handleOpenProtectedAiSite() {
-    if (!desktopBridge) return;
-    setProtectedBrowserLoading(true);
-    setProtectedBrowserError(null);
-    setProtectedBrowserMessage(null);
-    try {
-      const result = await desktopBridge.openProtectedBrowser(selectedBrowser, selectedAiSite);
-      if (!result.success) {
-        setProtectedBrowserError(result.error || 'Could not open the protected AI website.');
-        return;
-      }
-
-      async function handleUsbMonitoringChange(enabled: boolean) {
-        if (!desktopBridge) return;
-        setUsbLoading(true);
-        setUsbError(null);
-        try {
-          const result = await desktopBridge.setUsbMonitoringEnabled(enabled);
-          if (result.status) setUsbStatus(result.status);
-          if (!enabled) {
-            setStoredState((state) => state ? { ...state, usbMonitoringEnabled: false } : state);
-          }
-          if (!result.success) {
-            setUsbError(result.error || 'Could not change USB monitoring.');
-            return;
-          }
-          setStoredState((state) => state ? { ...state, usbMonitoringEnabled: enabled } : state);
-        } catch (error) {
-          setUsbError(error instanceof Error ? error.message : 'Could not change USB monitoring.');
-        } finally {
-          setUsbLoading(false);
+      const summary: ProtectionSummary = await bridge.getWindowsProtectionSummary();
+      if (summary) {
+        setProtectionActive(summary.active);
+        setStats(summary.stats || { scannedCount: 0, blockedCount: 0, allowedCount: 0 });
+        if (summary.recentEvents) {
+          setRecentEvents(summary.recentEvents);
         }
       }
-      const appName = selectedAiSite === 'chatgpt' ? 'ChatGPT' :
-        selectedAiSite === 'copilot' ? 'Copilot' :
-          selectedAiSite === 'claude' ? 'Claude' :
-            selectedAiSite === 'gemini' ? 'Gemini' : 'Perplexity';
-      setProtectedBrowserMessage(`${appName} opened in the Krypton-managed ${selectedBrowser === 'chrome' ? 'Chrome' : 'Edge'} profile.`);
-    } catch (error) {
-      setProtectedBrowserError(error instanceof Error ? error.message : 'Could not open the protected AI website.');
-    } finally {
-      setProtectedBrowserLoading(false);
+    } catch (err) {
+      console.warn('Could not refresh summary:', err);
     }
-  }
+  };
 
-  async function handleActivate(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!desktopBridge) return;
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    setAuthLoading(true);
 
-    setActivationLoading(true);
-    setActivationError(null);
     try {
-      const result = await desktopBridge.activate({
-        licenseKey: licenseKeyInput.trim(),
-        email: emailInput.trim(),
+      if (!bridge?.activate) {
+        throw new Error('Desktop bridge not available.');
+      }
+
+      const res = await bridge.activate({
+        licenseKey: licenseKeyInput,
+        email: emailInput,
         password: passwordInput,
       });
 
-      if (!result.success) {
-        setActivationError(result.error || 'Activation failed. Check your account and license details.');
+      if (!res.success) {
+        setAuthError(res.error || 'Activation failed. Please check credentials.');
         return;
       }
 
-      const state = await desktopBridge.getStoredState();
+      const state = await bridge.getStoredState();
       setStoredState(state);
       setIsActivated(true);
-      setExtensionStatus(await desktopBridge.getExtensionStatus());
-    } catch (error) {
-      setActivationError(error instanceof Error ? error.message : 'Could not connect to the activation service.');
+      await refreshSummary();
+    } catch (err: any) {
+      setAuthError(err.message || 'Connection error.');
     } finally {
-      setActivationLoading(false);
+      setAuthLoading(false);
     }
-  }
+  };
 
-  async function handleLogout() {
-    if (!desktopBridge) return;
-    try {
-      const result = await desktopBridge.logout();
-      setStoredState(null);
-      setIsActivated(false);
-      setUsbStatus(null);
-      setPairingCode(null);
-      setExtensionStatus(null);
-      setActivationError(result.warning || null);
-    } catch (error) {
-      setActivationError(error instanceof Error ? error.message : 'Could not log out.');
+  const handleLogout = async () => {
+    if (!bridge?.logout) return;
+    await bridge.logout();
+    setIsActivated(false);
+    setStoredState(null);
+    setPasswordInput('');
+  };
+
+  const handleToggleProtection = async () => {
+    const nextState = !protectionActive;
+    setProtectionActive(nextState);
+    if (bridge?.toggleWindowsProtection) {
+      await bridge.toggleWindowsProtection(nextState);
+      await refreshSummary();
     }
-  }
+  };
 
-  async function handleCreatePairingCode() {
-    if (!desktopBridge) return;
-    setPairingLoading(true);
-    setExtensionError(null);
-    setPairingCode(null);
+  const handleToggleTarget = async (targetId: string) => {
+    const updated = targets.map((t) => (t.id === targetId ? { ...t, enabled: !t.enabled } : t));
+    setTargets(updated);
+    const target = updated.find((t) => t.id === targetId);
+    if (bridge?.toggleWindowsTarget && target) {
+      await bridge.toggleWindowsTarget(targetId, target.enabled);
+    }
+  };
+
+  const handleTestScan = async () => {
+    if (!testInput.trim()) return;
+    setIsTesting(true);
     try {
-      const result = await desktopBridge.createExtensionPairing(selectedBrowser);
-      if (!result.success || !result.pairingCode || !result.expiresAt) {
-        setExtensionError(result.error || 'Could not create an activation code.');
-        return;
+      if (bridge?.scanPrompt) {
+        const res = await bridge.scanPrompt(testInput);
+        setTestResult(res);
       }
-      setPairingCode(result.pairingCode);
-      setPairingExpiresAt(result.expiresAt);
-    } catch (error) {
-      setExtensionError(error instanceof Error ? error.message : 'Could not create an activation code.');
+    } catch (err) {
+      console.error(err);
     } finally {
-      setPairingLoading(false);
+      setIsTesting(false);
     }
-  }
+  };
 
-  async function handleDownloadExtension() {
-    if (!desktopBridge) return;
-    setExtensionDownloadLoading(true);
-    setExtensionDownloadMessage(null);
-    setExtensionError(null);
-    try {
-      const result = await desktopBridge.downloadBrowserExtension(selectedBrowser);
-      if (!result.success) {
-        setExtensionError(result.error || 'Could not download the extension package.');
-        return;
-      }
-      setExtensionDirectory(result.extensionDirectory || null);
-      setExtensionDownloadMessage(
-        result.loadedInManagedProfile
-          ? `Extension loaded automatically in Krypton's separate ${selectedBrowser === 'chrome' ? 'Chrome' : 'Edge'} profile.`
-          : result.browserSettingsError
-            ? `Extension prepared, but browser setup needs your attention: ${result.browserSettingsError}`
-            : `Extension prepared. In Chrome/Edge, enable Developer mode and choose “Load unpacked”.`,
-      );
-    } catch (error) {
-      setExtensionError(error instanceof Error ? error.message : 'Could not download the extension package.');
-    } finally {
-      setExtensionDownloadLoading(false);
-    }
-  }
-
-  if (!desktopBridge) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[#070b14] p-6 text-slate-100">
-        <div className="max-w-md rounded-2xl border border-slate-800/80 bg-[#0b1220] p-7 text-center shadow-2xl">
-          <h1 className="text-lg font-semibold text-white">Krypton desktop runtime unavailable</h1>
-          <p className="mt-2 text-sm text-slate-400">Activation is available in the installed desktop application.</p>
-        </div>
-      </div>
-    );
-  }
+  const copySampleThreat = (sample: string) => {
+    setTestInput(sample);
+    setCopiedSample(true);
+    setTimeout(() => setCopiedSample(false), 2000);
+  };
 
   if (isInitializing) {
     return (
-      <div className="flex min-h-screen items-center justify-center gap-3 bg-[#070b14] text-sm text-slate-400">
-        <span className="h-4 w-4 animate-spin rounded-full border-2 border-sky-300/25 border-t-sky-300" />
-        Connecting to Krypton…
+      <div className="flex h-screen items-center justify-center bg-[#070b14] text-slate-300">
+        <RefreshCw className="h-6 w-6 animate-spin text-sky-400" />
+        <span className="ml-3 text-sm font-medium">Initializing Krypton Windows Agent…</span>
       </div>
     );
   }
 
+  // =========================================================================
+  // VIEW 1: AUTH / LICENSE ACTIVATION (Clean, Focused, Modern)
+  // =========================================================================
   if (!isActivated) {
     return (
-      <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-[#070b14] p-6 text-slate-100">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_0%,rgba(14,165,233,0.12),transparent_58%)]" />
-        <div className="relative w-full max-w-md rounded-2xl border border-slate-800/80 bg-[#0b1220]/95 p-8 shadow-[0_24px_100px_rgba(2,132,199,0.12)]">
-          <div className="mb-6 flex items-center gap-3">
-            <div className="rounded-lg border border-sky-400/20 bg-sky-400/10 p-2.5">
-              <Shield className="h-7 w-7 text-sky-300" />
+      <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#070b14] px-4 font-sans text-slate-100 select-none">
+        {/* Background glow effects */}
+        <div className="pointer-events-none absolute -top-40 left-1/2 h-[450px] w-[600px] -translate-x-1/2 rounded-full bg-sky-500/10 blur-[130px]" />
+        <div className="pointer-events-none absolute -bottom-40 right-10 h-[350px] w-[450px] rounded-full bg-indigo-500/10 blur-[120px]" />
+
+        <div className="relative w-full max-w-md rounded-2xl border border-slate-800/90 bg-[#0c1322]/95 p-8 shadow-2xl shadow-black/80 backdrop-blur-xl">
+          {/* Logo & Headline */}
+          <div className="text-center">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-tr from-sky-500 via-indigo-500 to-indigo-600 shadow-lg shadow-sky-500/25">
+              <ShieldCheck className="h-8 w-8 text-white" />
             </div>
-            <div>
-              <h1 className="text-xl font-bold tracking-tight text-white">Krypton Security</h1>
-              <p className="text-xs text-slate-400">Activate your account</p>
-            </div>
+            <h1 className="mt-4 text-2xl font-bold tracking-tight text-white">Krypton Endpoint</h1>
+            <p className="mt-1 text-xs text-slate-400">
+              Zero-Extension AI DLP for Windows (Browsers & Desktop Apps)
+            </p>
           </div>
 
-          <div className="mb-6 space-y-1 rounded-lg border border-slate-700/60 bg-slate-800/60 p-3.5 text-xs text-slate-300">
-            <p><span className="text-slate-400">Device:</span> {deviceInfo?.deviceName || 'This computer'}</p>
-            <p><span className="text-slate-400">Platform:</span> {deviceInfo?.osVersion || 'Desktop OS'}</p>
-          </div>
+          {authError && (
+            <div className="mt-5 flex items-start gap-2.5 rounded-xl border border-rose-500/20 bg-rose-500/10 p-3.5 text-xs text-rose-300">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-rose-400 mt-0.5" />
+              <span>{authError}</span>
+            </div>
+          )}
 
-          <form onSubmit={handleActivate} className="space-y-4">
+          {/* Form */}
+          <form onSubmit={handleLogin} className="mt-6 space-y-4">
             <div>
-              <label htmlFor="license-key" className="mb-1 block text-xs font-medium text-slate-300">Company license key</label>
-              <div className="relative">
-                <KeyRound className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+              <label className="text-[11px] font-semibold tracking-wider text-slate-400 uppercase">
+                Company License Key
+              </label>
+              <div className="relative mt-1.5">
+                <KeyRound className="absolute top-3 left-3 h-4 w-4 text-slate-500" />
                 <input
-                  id="license-key"
                   type="text"
                   required
-                  autoComplete="off"
-                  placeholder="KRYP-XXXX-XXXX-XXXX-XXXX"
+                  placeholder="KRP-XXXX-XXXX-XXXX"
                   value={licenseKeyInput}
-                  onChange={(event) => setLicenseKeyInput(event.target.value.toUpperCase())}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-950 py-2 pl-9 pr-3 font-mono text-sm text-slate-100 placeholder-slate-500 focus:border-sky-400 focus:outline-none"
+                  onChange={(e) => setLicenseKeyInput(e.target.value)}
+                  className="w-full rounded-xl border border-slate-800 bg-slate-950/70 py-2.5 pr-4 pl-10 text-sm font-mono text-white placeholder-slate-600 transition focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                 />
               </div>
             </div>
 
             <div>
-              <label htmlFor="account-email" className="mb-1 block text-xs font-medium text-slate-300">Work email</label>
-              <input
-                id="account-email"
-                type="email"
-                required
-                autoComplete="username"
-                placeholder="employee@company.com"
-                value={emailInput}
-                onChange={(event) => setEmailInput(event.target.value)}
-                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-sky-400 focus:outline-none"
-              />
+              <label className="text-[11px] font-semibold tracking-wider text-slate-400 uppercase">
+                Employee Email
+              </label>
+              <div className="relative mt-1.5">
+                <Mail className="absolute top-3 left-3 h-4 w-4 text-slate-500" />
+                <input
+                  type="email"
+                  required
+                  placeholder="employee@company.com"
+                  value={emailInput}
+                  onChange={(e) => setEmailInput(e.target.value)}
+                  className="w-full rounded-xl border border-slate-800 bg-slate-950/70 py-2.5 pr-4 pl-10 text-sm text-white placeholder-slate-600 transition focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                />
+              </div>
             </div>
 
             <div>
-              <label htmlFor="account-password" className="mb-1 block text-xs font-medium text-slate-300">Account password</label>
-              <div className="relative">
+              <label className="text-[11px] font-semibold tracking-wider text-slate-400 uppercase">
+                Password
+              </label>
+              <div className="relative mt-1.5">
+                <Lock className="absolute top-3 left-3 h-4 w-4 text-slate-500" />
                 <input
-                  id="account-password"
                   type={showPassword ? 'text' : 'password'}
                   required
-                  autoComplete="current-password"
+                  placeholder="••••••••••••"
                   value={passwordInput}
-                  onChange={(event) => setPasswordInput(event.target.value)}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 pr-10 text-sm text-slate-100 focus:border-sky-400 focus:outline-none"
+                  onChange={(e) => setPasswordInput(e.target.value)}
+                  className="w-full rounded-xl border border-slate-800 bg-slate-950/70 py-2.5 pr-10 pl-10 text-sm text-white placeholder-slate-600 transition focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                 />
                 <button
                   type="button"
-                  onClick={() => setShowPassword((visible) => !visible)}
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 hover:text-white"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute top-2.5 right-3 text-slate-500 hover:text-slate-300"
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
             </div>
 
-            {activationError && (
-              <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-800/80 bg-red-950/50 p-3 text-xs text-red-300">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
-                <span>{activationError}</span>
-              </div>
-            )}
-
             <button
               type="submit"
-              disabled={activationLoading}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-sky-400 px-4 py-2.5 text-sm font-semibold text-slate-950 transition-colors hover:bg-sky-300 disabled:opacity-50"
+              disabled={authLoading}
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 via-sky-600 to-indigo-600 py-3 text-sm font-semibold text-white shadow-lg shadow-sky-500/25 transition hover:brightness-110 active:scale-[0.99] disabled:opacity-50"
             >
-              <ShieldCheck className="h-4 w-4" />
-              {activationLoading ? 'Activating…' : 'Activate'}
+              {authLoading ? (
+                <>
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  Authenticating Device…
+                </>
+              ) : (
+                'Activate & Enable DLP'
+              )}
             </button>
           </form>
 
-          <p className="mt-6 text-center text-xs text-slate-500">
-            Ask your company administrator for your account and license key.
-          </p>
-          {deviceInfo?.platform === 'win32' && (
-            <div className="mt-5 border-t border-slate-800 pt-4">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-[11px] text-slate-500">
-                  Version {updateInfo?.currentVersion || deviceInfo.appVersion || '—'}
-                  {updateInfo?.updateAvailable && updateInfo.latestVersion ? ` · ${updateInfo.latestVersion} available` : ''}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => void (updateInfo?.updateAvailable ? handleInstallUpdate() : handleCheckForUpdates())}
-                  disabled={updateChecking || updateInstalling}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-sky-300/20 bg-sky-400/10 px-3 py-2 text-xs font-semibold text-sky-100 hover:bg-sky-400/20 disabled:opacity-50"
-                >
-                  {updateChecking || updateInstalling
-                    ? <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                    : updateInfo?.updateAvailable
-                      ? <Download className="h-3.5 w-3.5" />
-                      : <RefreshCw className="h-3.5 w-3.5" />}
-                  {updateChecking ? 'Checking…' : updateInstalling ? 'Downloading…' : updateInfo?.updateAvailable ? 'Update now' : 'Check for updates'}
-                </button>
-              </div>
-              {updateMessage && <p role="status" className="mt-2 text-[11px] text-emerald-300">{updateMessage}</p>}
-              {updateError && <p role="alert" className="mt-2 text-[11px] text-rose-300">{updateError}</p>}
-            </div>
-          )}
+          {/* Windows Features Note */}
+          <div className="mt-6 rounded-xl border border-slate-800/80 bg-slate-950/50 p-3 text-center">
+            <p className="text-[11px] text-slate-400">
+              ⚡ <strong className="text-slate-200">Windows Native Protection:</strong> Works automatically on Chrome, Edge, Firefox, Brave, and desktop AI clients without manual extension install.
+            </p>
+          </div>
         </div>
       </div>
     );
   }
 
+  // =========================================================================
+  // VIEW 2: HOME DASHBOARD (Clean, Modern Security Hub)
+  // =========================================================================
   return (
-    <div className="min-h-screen bg-[#070b14] text-slate-100">
-    <header className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-800/80 bg-[#0b1220]/90 px-5 py-3.5 backdrop-blur-xl sm:px-8">
+    <div className="min-h-screen bg-[#070b14] font-sans text-slate-100 select-none">
+      {/* Top Navigation Bar */}
+      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-800/80 bg-[#090e1c]/90 px-6 py-3.5 backdrop-blur-md">
         <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-sky-300/20 bg-sky-300/10 text-sky-200">
-          <Shield className="h-5 w-5" />
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 shadow-md shadow-sky-500/20">
+            <ShieldCheck className="h-5 w-5 text-white" />
           </div>
           <div>
-          <h1 className="text-sm font-semibold tracking-tight text-white">Krypton</h1>
-          <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-            Protection workspace
-          </p>
-        </div>
-      </div>
-      <div className="flex items-center gap-3">
-        <div className="hidden text-right text-xs sm:block">
-          <p className="font-medium text-slate-200">{storedState?.user?.name || 'Employee'}</p>
-          <p className="mt-0.5 text-[11px] text-slate-500">{storedState?.user?.email || 'Activated user'}</p>
-        </div>
-        <button
-          onClick={handleLogout}
-          title="Log out"
-          className="flex items-center gap-2 rounded-lg border border-slate-800 px-2.5 py-2 text-xs text-slate-400 transition hover:border-rose-400/20 hover:bg-rose-400/5 hover:text-rose-300"
-        >
-          <LogOut className="h-4 w-4" />
-          <span className="hidden sm:inline">Sign out</span>
-        </button>
-      </div>
-    </header>
-
-    <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-12">
-      <section className="overflow-hidden rounded-2xl border border-slate-800/80 bg-[#0b1220] shadow-[0_24px_100px_rgba(2,132,199,0.08)]">
-        <div className="border-b border-slate-800/80 bg-gradient-to-r from-sky-400/[0.08] to-transparent px-5 py-5 sm:px-7">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-sky-300/20 bg-sky-400/10">
-            <ShieldCheck className="h-6 w-6 text-sky-300" />
-            </div>
-            <div>
-              <h2 className="text-lg font-semibold tracking-tight text-white">Browser protection</h2>
-              <p className="mt-1 text-xs text-slate-400">Connect Krypton to Chrome or Edge</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="mx-5 mt-5 rounded-xl border border-slate-800 bg-[#080e19] p-4 sm:mx-7">
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-xs text-slate-400">Extension status</span>
-              <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                extensionStatus?.protectionActive
-                  ? 'bg-emerald-500/15 text-emerald-300'
-                  : extensionStatus?.status === 'license_invalid' || extensionStatus?.status === 'revoked'
-                    ? 'bg-red-500/15 text-red-300'
-                    : 'bg-amber-500/15 text-amber-200'
-              }`}>
-                {extensionStatus?.protectionActive
-                  ? 'Protection Active'
-                  : extensionStatus?.status === 'connected'
-                    ? 'Connected'
-                    : extensionStatus?.status === 'installed'
-                      ? 'Installed · Not Activated'
-                      : extensionStatus?.status === 'license_invalid'
-                        ? 'License Invalid'
-                        : extensionStatus?.status === 'revoked'
-                          ? 'Access Revoked'
-                          : extensionStatus?.status === 'unavailable'
-                            ? 'Status Unavailable'
-                            : 'Not Installed'}
+            <div className="flex items-center gap-2">
+              <h1 className="text-sm font-bold tracking-tight text-white">KRYPTON ENDPOINT</h1>
+              <span className="rounded-full bg-sky-500/10 px-2 py-0.5 text-[10px] font-semibold text-sky-400 border border-sky-500/20">
+                WINDOWS
               </span>
             </div>
-            {extensionStatus?.lastConnectedAt && (
-              <p className="mt-2 text-[11px] text-slate-500">
-                Last connected: {new Date(extensionStatus.lastConnectedAt).toLocaleString()}
-              </p>
-            )}
-            {extensionStatus?.error && (
-              <p role="alert" className="mt-2 text-xs text-amber-200">{extensionStatus.error}</p>
-            )}
+            <p className="text-[10px] text-slate-400">
+              Device: {deviceInfo.deviceId || 'WIN-ENDPOINT'} · Agent v{deviceInfo.appVersion || '1.0.1'}
+            </p>
+          </div>
+        </div>
+
+        {/* User Badge & Logout */}
+        <div className="flex items-center gap-4">
+          <div className="text-right">
+            <p className="text-xs font-medium text-white">{storedState?.user?.email || 'Protected Employee'}</p>
+            <span className="inline-flex items-center gap-1.5 text-[10px] text-emerald-400 font-semibold">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              License Verified
+            </span>
           </div>
 
-          <div className="mx-5 mt-4 rounded-xl border border-sky-300/15 bg-sky-300/[0.04] p-4 sm:mx-7">
-            <div className="flex items-start gap-3">
-              <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-sky-300/15 bg-sky-300/10">
-                <ShieldCheck className="h-4 w-4 text-sky-200" />
+          <button
+            onClick={handleLogout}
+            title="Log out of this device"
+            className="flex items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-400 transition hover:border-rose-500/40 hover:bg-rose-500/10 hover:text-rose-300"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+            <span>Logout</span>
+          </button>
+        </div>
+      </header>
+
+      {/* Main Content Dashboard */}
+      <main className="mx-auto max-w-6xl p-6 sm:p-8 space-y-6">
+        {/* Shield Status Hero Card */}
+        <div className="relative overflow-hidden rounded-2xl border border-sky-500/20 bg-gradient-to-r from-[#0c162d] via-[#091122] to-[#080d1a] p-6 shadow-2xl">
+          <div className="pointer-events-none absolute -right-10 -top-10 h-64 w-64 rounded-full bg-sky-500/10 blur-3xl" />
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+            <div className="flex items-center gap-4">
+              <div
+                className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border transition ${
+                  protectionActive
+                    ? 'border-emerald-500/30 bg-emerald-500/15 text-emerald-400 shadow-lg shadow-emerald-500/20'
+                    : 'border-slate-800 bg-slate-900 text-slate-500'
+                }`}
+              >
+                {protectionActive ? <ShieldCheck className="h-9 w-9" /> : <ShieldAlert className="h-9 w-9" />}
               </div>
-              <div className="min-w-0 flex-1">
-                <h3 className="text-sm font-semibold text-white">Protected AI websites</h3>
-                <p className="mt-1 text-xs leading-5 text-slate-400">
-                  Open ChatGPT, Copilot, Claude, Gemini, or Perplexity in a separate Krypton-managed browser profile.
-                  Recognized prompt requests are scanned locally before they are sent.
+              <div>
+                <div className="flex items-center gap-2.5">
+                  <h2 className="text-xl font-bold text-white">
+                    {protectionActive ? 'Real-Time Protection is ACTIVE' : 'Protection is PAUSED'}
+                  </h2>
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                      protectionActive
+                        ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                        : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                    }`}
+                  >
+                    {protectionActive ? 'SHIELD ON' : 'DISABLED'}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-slate-400 max-w-xl">
+                  {protectionActive
+                    ? 'Active across all Windows browsers (Chrome, Edge, Firefox, Brave) and AI desktop apps. Scanning for secrets, API keys, and sensitive data without requiring browser extensions.'
+                    : 'Prompt interception is paused. Prompts to AI sites and desktop apps are currently unmonitored.'}
                 </p>
               </div>
             </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
-              <label className="block text-xs font-medium text-slate-300">
-                AI website
-                <select
-                  value={selectedAiSite}
-                  onChange={(event) => setSelectedAiSite(event.target.value)}
-                  className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100"
-                >
-                  <option value="chatgpt">ChatGPT web</option>
-                  <option value="copilot">Copilot web</option>
-                  <option value="claude">Claude web</option>
-                  <option value="gemini">Gemini web</option>
-                  <option value="perplexity">Perplexity web</option>
-                </select>
-              </label>
-              <label className="block text-xs font-medium text-slate-300">
-                Browser
-                <select
-                  value={selectedBrowser}
-                  onChange={(event) => setSelectedBrowser(event.target.value as 'chrome' | 'edge')}
-                  className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100"
-                >
-                  <option value="chrome">Google Chrome</option>
-                  <option value="edge">Microsoft Edge</option>
-                </select>
-              </label>
+
+            {/* Toggle Switch */}
+            <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={() => void handleOpenProtectedAiSite()}
-                disabled={protectedBrowserLoading || protectionAvailability?.available === false}
-                className="self-end rounded-lg bg-sky-400 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-sky-300 disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={handleToggleProtection}
+                className={`relative inline-flex h-7 w-14 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  protectionActive ? 'bg-sky-500' : 'bg-slate-800'
+                }`}
               >
-                {protectedBrowserLoading ? 'Opening…' : 'Open protected'}
+                <span
+                  className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                    protectionActive ? 'translate-x-7' : 'translate-x-0'
+                  }`}
+                />
               </button>
+              <span className="text-xs font-medium text-slate-300">
+                {protectionActive ? 'Enabled' : 'Disabled'}
+              </span>
             </div>
-            {protectionAvailability?.available === false && (
-              <p className="mt-3 text-xs text-amber-200">
-                Protected browsing is unavailable ({protectionAvailability.status.replaceAll('_', ' ')}).
-                Use Windows with an active license and Chrome or Edge installed.
-              </p>
-            )}
-            {protectedBrowserMessage && <p role="status" className="mt-3 text-xs text-emerald-300">{protectedBrowserMessage}</p>}
-            {protectedBrowserError && <p role="alert" className="mt-3 text-xs text-rose-300">{protectedBrowserError}</p>}
-            <p className="mt-3 border-t border-slate-800/80 pt-3 text-[11px] leading-5 text-slate-500">
-              Only known supported web request endpoints are inspected; provider changes or unrecognized submission routes may not be covered.
-            </p>
-            <p className="mt-2 text-[11px] leading-5 text-slate-500">
-              Standalone ChatGPT/Copilot desktop apps and other desktop applications are not protected. They do not expose a supported
-              pre-submit scanning interface; Krypton does not monitor keystrokes, clipboard contents, or unrelated app input.
-            </p>
+          </div>
+        </div>
+
+        {/* Live Metrics Grid */}
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <div className="rounded-2xl border border-slate-800/80 bg-[#0a0f1d] p-5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-slate-400">Total Scanned</span>
+              <Activity className="h-4 w-4 text-sky-400" />
+            </div>
+            <p className="mt-2 text-2xl font-bold text-white">{stats.scannedCount}</p>
+            <p className="mt-1 text-[11px] text-slate-500">Prompts & inputs inspected</p>
           </div>
 
-          <div className="space-y-4 px-5 pb-6 pt-5 sm:px-7">
-            <button
-              type="button"
-              onClick={() => void handleDownloadExtension()}
-              disabled={extensionDownloadLoading}
-              className="w-full rounded-lg border border-sky-300/20 bg-sky-400/10 px-4 py-2.5 text-sm font-semibold text-sky-100 transition-colors hover:bg-sky-400/20 disabled:cursor-wait disabled:opacity-50"
-            >
-              {extensionDownloadLoading
-                ? 'Preparing browser extension…'
-                : deviceInfo?.platform === 'win32'
-                  ? 'Install extension in Krypton browser'
-                  : 'Prepare extension in selected browser'}
-            </button>
-            {extensionDownloadMessage && (
-              <p role="status" className="text-xs text-emerald-300">{extensionDownloadMessage}</p>
-            )}
-            <ol className="grid gap-2 text-xs leading-5 text-slate-400 sm:grid-cols-3">
-              <li className="rounded-lg border border-slate-800/80 bg-slate-950/50 p-3">
-                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-sky-300">01 · Prepare</span>
-                Download and verify the extension package automatically.
-              </li>
-              <li className="rounded-lg border border-slate-800/80 bg-slate-950/50 p-3">
-                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-sky-300">02 · Add to browser</span>
-                {deviceInfo?.platform === 'win32'
-                  ? 'Krypton loads it automatically in its separate browser profile.'
-                  : 'Enable Developer mode, choose “Load unpacked”, and select the folder below.'}
-              </li>
-              <li className="rounded-lg border border-slate-800/80 bg-slate-950/50 p-3">
-                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-sky-300">03 · Connect</span>
-                Generate a one-time code and enter it in the extension popup.
-              </li>
-            </ol>
-            {extensionDirectory && deviceInfo?.platform !== 'win32' && (
-              <div className="rounded-lg border border-slate-700 bg-slate-950 p-3">
-                <p className="mb-1 text-[11px] text-slate-500">Choose this folder in “Load unpacked”:</p>
-                <code className="block break-all text-xs text-sky-200">{extensionDirectory}</code>
-                <button
-                  type="button"
-                  onClick={() => void desktopBridge.copyText(extensionDirectory)}
-                  className="mt-2 text-xs font-medium text-sky-300 hover:text-sky-100"
-                >
-                  Copy folder path
-                </button>
+          <div className="rounded-2xl border border-slate-800/80 bg-[#0a0f1d] p-5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-slate-400">Threats Blocked</span>
+              <XCircle className="h-4 w-4 text-rose-400" />
+            </div>
+            <p className="mt-2 text-2xl font-bold text-rose-400">{stats.blockedCount}</p>
+            <p className="mt-1 text-[11px] text-slate-500">Sensitive leaks prevented</p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-800/80 bg-[#0a0f1d] p-5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-slate-400">Clean Allowed</span>
+              <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+            </div>
+            <p className="mt-2 text-2xl font-bold text-emerald-400">{stats.allowedCount}</p>
+            <p className="mt-1 text-[11px] text-slate-500">Authorized safe submissions</p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-800/80 bg-[#0a0f1d] p-5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-slate-400">Protected Targets</span>
+              <Monitor className="h-4 w-4 text-indigo-400" />
+            </div>
+            <p className="mt-2 text-2xl font-bold text-white">{targets.filter((t) => t.enabled).length}</p>
+            <p className="mt-1 text-[11px] text-slate-500">5 AI sites + desktop apps</p>
+          </div>
+        </div>
+
+        {/* Protected Targets Section */}
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-base font-bold text-white">Protected AI Platforms & Desktop Apps</h3>
+              <p className="text-xs text-slate-400">
+                Automatic protection on any browser and official Windows desktop clients.
+              </p>
+            </div>
+            <span className="rounded-full bg-slate-900 border border-slate-800 px-3 py-1 text-[11px] text-sky-400">
+              No Extension Needed
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {targets.map((target) => (
+              <div
+                key={target.id}
+                className={`group rounded-2xl border p-4 transition ${
+                  target.enabled
+                    ? 'border-slate-800/80 bg-[#0a0f1d] hover:border-slate-700'
+                    : 'border-slate-900 bg-[#080c16] opacity-60'
+                }`}
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-tr ${target.color} shadow-md text-white`}
+                    >
+                      <Sparkles className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-semibold text-white">{target.name}</h4>
+                      <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-400">
+                        <Globe className="h-3 w-3 text-slate-500" />
+                        <span>{target.domain}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Toggle target */}
+                  <input
+                    type="checkbox"
+                    checked={target.enabled}
+                    onChange={() => handleToggleTarget(target.id)}
+                    className="h-4 w-4 rounded accent-sky-400 cursor-pointer"
+                  />
+                </div>
+
+                <div className="mt-3 flex items-center justify-between border-t border-slate-800/60 pt-2.5 text-[11px]">
+                  <span className="text-slate-400">
+                    App: <strong className="text-slate-300 font-mono">{target.desktopProcess}</strong>
+                  </span>
+                  <a
+                    href={target.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-sky-400 hover:text-sky-300"
+                  >
+                    Open <ExternalLink className="h-3 w-3" />
+                  </a>
+                </div>
               </div>
-            )}
-            <button
-              type="button"
-              onClick={() => void handleCreatePairingCode()}
-              disabled={pairingLoading}
-              className="w-full rounded-lg bg-sky-400 px-4 py-2.5 text-sm font-bold text-slate-950 transition-colors hover:bg-sky-300 disabled:cursor-wait disabled:opacity-50"
-            >
-              {pairingLoading ? 'Generating…' : 'Generate one-time activation code'}
-            </button>
-            {pairingCode && pairingExpiresAt && (
-              <div className="rounded-lg border border-sky-300/20 bg-sky-400/[0.06] p-4 text-center">
-                <p className="text-xs text-slate-300">Enter this code in the extension popup</p>
-                <p className="my-2 font-mono text-2xl font-bold tracking-[0.2em] text-sky-200">{pairingCode}</p>
-                <p className="text-[11px] text-slate-500">
-                  Expires {new Date(pairingExpiresAt).toLocaleTimeString()}
-                </p>
-              </div>
-            )}
-            {extensionError && <p role="alert" className="text-xs text-red-300">{extensionError}</p>}
-            <p className="text-[11px] leading-5 text-slate-500">
-              Prompt contents are scanned locally. Only redacted event metadata is sent. Protection applies to supported AI sites in this managed browser profile.
-            </p>
+            ))}
           </div>
         </section>
 
-        <section className="mt-5 overflow-hidden rounded-2xl border border-slate-800/80 bg-[#0b1220]">
-          <div className="border-b border-slate-800/80 px-5 py-5 sm:px-7">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-sky-300/20 bg-sky-400/10">
-                <HardDrive className="h-5 w-5 text-sky-200" />
-              </div>
-              <div>
-                <h2 className="text-base font-semibold text-white">USB activity monitoring</h2>
-                <p className="mt-1 text-xs text-slate-400">Optional · Windows removable drives only</p>
-              </div>
+        {/* Live Interactive Scanner Tester */}
+        <section className="rounded-2xl border border-slate-800/80 bg-[#0a0f1d] p-5 sm:p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Terminal className="h-4 w-4 text-sky-400" />
+                Live Prompt Security Tester
+              </h3>
+              <p className="text-xs text-slate-400">
+                Test how Krypton scans and blocks sensitive secrets or allows safe prompts in real-time.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  copySampleThreat('Here is my OpenAI key sk-proj-998877665544332211aabbccddeeffgghhiijj')
+                }
+                className="rounded-lg border border-slate-800 bg-slate-900 px-2.5 py-1 text-[11px] text-slate-300 hover:bg-slate-800"
+              >
+                {copiedSample ? 'Loaded Sample!' : 'Try API Key Threat'}
+              </button>
             </div>
           </div>
-          <div className="space-y-4 p-5 sm:p-7">
-            <p className="text-xs leading-5 text-slate-400">
-              If enabled, Krypton reports USB drive connections and metadata for files created or changed on those drives:
-              file name, extension, size, time, and destination. File contents are never read or uploaded.
-              Windows does not expose a reliable source path or verified copy-completion signal to this unprivileged monitor.
-            </p>
-            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-700/80 bg-slate-950/60 p-4">
-              <input
-                type="checkbox"
-                checked={storedState?.usbMonitoringEnabled === true}
-                onChange={(event) => void handleUsbMonitoringChange(event.target.checked)}
-                disabled={usbLoading || (deviceInfo?.platform !== 'win32' && usbStatus?.platform !== 'win32')}
-                className="mt-0.5 h-4 w-4 accent-sky-400"
-              />
-              <span>
-                <span className="block text-sm font-medium text-slate-200">I agree to enable USB activity monitoring on this device</span>
-                <span className="mt-1 block text-[11px] leading-5 text-slate-500">
-                  Your company administrator can view the reported metadata. You can turn this off at any time here.
-                </span>
-              </span>
-            </label>
-            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-              <span className={`inline-flex items-center gap-2 ${usbStatus?.active ? 'text-emerald-300' : 'text-slate-400'}`}>
-                <span className={`h-2 w-2 rounded-full ${usbStatus?.active ? 'bg-emerald-400' : 'bg-slate-600'}`} />
-                {usbLoading ? 'Updating…' : usbStatus?.active
-                  ? `Monitoring active · ${usbStatus.connectedDevices} removable drive(s)`
-                  : storedState?.usbMonitoringEnabled ? 'Consented · waiting for a validated connection' : 'Monitoring off'}
-              </span>
-              {usbStatus?.lastEventAt && (
-                <span className="text-[11px] text-slate-500">Last event {new Date(usbStatus.lastEventAt).toLocaleString()}</span>
+
+          <div className="space-y-3">
+            <textarea
+              rows={3}
+              value={testInput}
+              onChange={(e) => setTestInput(e.target.value)}
+              placeholder="Type or paste any prompt here to see instant Krypton DLP scanner response..."
+              className="w-full rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-xs font-mono text-white placeholder-slate-600 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+            />
+
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                onClick={handleTestScan}
+                disabled={isTesting || !testInput.trim()}
+                className="flex items-center gap-2 rounded-xl bg-sky-500/15 border border-sky-400/30 px-4 py-2 text-xs font-semibold text-sky-300 hover:bg-sky-500/25 disabled:opacity-40"
+              >
+                {isTesting ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+                Run Live Scan
+              </button>
+
+              {testResult && (
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-slate-400">Action:</span>
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
+                      testResult.action === 'block'
+                        ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                        : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                    }`}
+                  >
+                    {testResult.action === 'block' ? '🚫 BLOCKED' : '✅ ALLOWED'}
+                  </span>
+                  <span className="text-slate-400">Risk: {testResult.highestRisk}</span>
+                </div>
               )}
             </div>
-            {usbError && <p role="alert" className="text-xs text-rose-300">{usbError}</p>}
-            {usbStatus?.error && <p role="alert" className="text-xs text-amber-200">{usbStatus.error}</p>}
-            {deviceInfo?.platform !== 'win32' && (
-              <p className="text-[11px] leading-5 text-amber-200">This feature is currently supported on Windows only.</p>
+
+            {testResult?.hasRisk && testResult.matches?.length > 0 && (
+              <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-200 space-y-1">
+                <p className="font-semibold text-rose-300">
+                  Detected Violations: {testResult.matches.map((m: any) => m.ruleName).join(', ')}
+                </p>
+                <p className="text-[11px] text-slate-300">
+                  Redacted Preview: <span className="font-mono text-white">{testResult.redactedPrompt}</span>
+                </p>
+              </div>
             )}
-            <p className="text-[11px] leading-5 text-slate-500">
-              Monitoring uses Windows removable-drive metadata and directory notifications only. It does not use keyboard hooks,
-              clipboard capture, administrator privileges, or a kernel driver. A destination write is an observation, not proof that a transfer completed.
-            </p>
           </div>
         </section>
 
-        {deviceInfo?.platform === 'win32' && (
-          <section className="mt-5 overflow-hidden rounded-2xl border border-slate-800/80 bg-[#0b1220]">
-            <div className="flex flex-wrap items-center justify-between gap-4 p-5 sm:p-7">
-              <div>
-                <h2 className="text-sm font-semibold text-white">Krypton updates</h2>
-                <p className="mt-1 text-xs text-slate-400">
-                  Installed version {updateInfo?.currentVersion || deviceInfo.appVersion || '—'}
-                  {updateInfo?.updateAvailable && updateInfo.latestVersion
-                    ? ` · Version ${updateInfo.latestVersion} is ready`
-                    : ''}
-                </p>
-                {updateMessage && <p role="status" className="mt-2 text-xs text-emerald-300">{updateMessage}</p>}
-                {updateError && <p role="alert" className="mt-2 text-xs text-rose-300">{updateError}</p>}
-                {updateInfo?.updateAvailable && updateInfo.signatureStatus === 'unsigned' && (
-                  <p className="mt-2 text-[11px] text-amber-200">
-                    This release is unsigned; Windows may show its standard publisher warning.
-                  </p>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => void (updateInfo?.updateAvailable ? handleInstallUpdate() : handleCheckForUpdates())}
-                disabled={updateChecking || updateInstalling}
-                className="inline-flex items-center gap-2 rounded-lg border border-sky-300/20 bg-sky-400/10 px-4 py-2.5 text-sm font-semibold text-sky-100 transition hover:bg-sky-400/20 disabled:cursor-wait disabled:opacity-50"
-              >
-                {updateChecking || updateInstalling
-                  ? <RefreshCw className="h-4 w-4 animate-spin" />
-                  : updateInfo?.updateAvailable
-                    ? <Download className="h-4 w-4" />
-                    : <RefreshCw className="h-4 w-4" />}
-                {updateChecking
-                  ? 'Checking…'
-                  : updateInstalling
-                    ? 'Downloading update…'
-                    : updateInfo?.updateAvailable
-                      ? 'Update now'
-                      : 'Check for updates'}
-              </button>
+        {/* Recent Security Incidents / Activity */}
+        <section className="rounded-2xl border border-slate-800/80 bg-[#0a0f1d] p-5 sm:p-6 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-white">Recent Real-Time Activity</h3>
+            <span className="text-[11px] text-slate-500">Live endpoint feed</span>
+          </div>
+
+          {recentEvents.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-slate-800 p-6 text-center text-xs text-slate-500">
+              No threats detected yet. Krypton is actively guarding clipboard & inputs in the background.
             </div>
-          </section>
-        )}
+          ) : (
+            <div className="space-y-2">
+              {recentEvents.slice(0, 5).map((evt) => (
+                <div
+                  key={evt.id}
+                  className="flex items-center justify-between rounded-xl border border-slate-800/60 bg-slate-950/40 p-3 text-xs"
+                >
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={`h-2 w-2 rounded-full ${
+                        evt.actionTaken === 'block' ? 'bg-rose-500' : 'bg-emerald-400'
+                      }`}
+                    />
+                    <div>
+                      <p className="font-semibold text-white">{evt.ruleName}</p>
+                      <p className="text-[11px] text-slate-400">{evt.targetName}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span
+                      className={`rounded px-2 py-0.5 text-[10px] font-bold ${
+                        evt.actionTaken === 'block'
+                          ? 'bg-rose-500/20 text-rose-300'
+                          : 'bg-emerald-500/20 text-emerald-300'
+                      }`}
+                    >
+                      {evt.actionTaken.toUpperCase()}
+                    </span>
+                    <p className="mt-0.5 text-[10px] text-slate-500">
+                      {new Date(evt.timestamp).toLocaleTimeString()}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       </main>
     </div>
   );

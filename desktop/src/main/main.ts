@@ -23,6 +23,8 @@ import {
   isProtectedAiSite,
   PROTECTED_AI_SITES,
 } from './protected-browser-policy';
+import { WindowsProtectionAgent } from './windows-protection';
+import { LocalNetworkInterceptor } from './network-interceptor';
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 const store = new DesktopStore();
@@ -31,11 +33,18 @@ const usbDlpMonitor = new UsbDlpMonitor({
   enumerateVolumes: enumerateRemovableUsbVolumes,
   onEvent: reportDesktopUsbEvent,
 });
+const windowsAgent = new WindowsProtectionAgent(securityEngine, (eventData) => void reportDesktopEvent(eventData));
+const networkInterceptor = new LocalNetworkInterceptor(securityEngine, (eventData) => void reportDesktopEvent(eventData));
 
 // Load cached policy if available
 const cachedPolicy = store.get('policy');
 if (cachedPolicy) {
   securityEngine.updatePolicy(cachedPolicy);
+}
+
+if (store.get('token')) {
+  windowsAgent.startClipboardMonitor();
+  void networkInterceptor.start();
 }
 
 let mainWindow: BrowserWindow | null = null;
@@ -312,7 +321,11 @@ app.on('before-quit', (event) => {
   if (shuttingDown) return;
   event.preventDefault();
   shuttingDown = true;
-  void Promise.all([closeManagedBrowserSessions(), usbDlpMonitor.stop()]).finally(() => app.quit());
+  void Promise.all([
+    closeManagedBrowserSessions(),
+    usbDlpMonitor.stop(),
+    networkInterceptor.stop(),
+  ]).finally(() => app.quit());
 });
 
 function setupIpcHandlers() {
@@ -513,6 +526,38 @@ function setupIpcHandlers() {
   });
 
   ipcMain.handle('desktop:get-website-protection-availability', () => getProtectionAvailability());
+  ipcMain.handle('desktop:get-windows-protection-summary', () => {
+    const summary = windowsAgent.getSummary();
+    const netStats = networkInterceptor.getStats();
+    return {
+      ...summary,
+      stats: {
+        scannedCount: summary.stats.scannedCount + netStats.requestsInspected,
+        blockedCount: summary.stats.blockedCount + netStats.threatsBlocked,
+        allowedCount: summary.stats.allowedCount + netStats.allowedRequests,
+      },
+      networkInterceptor: netStats,
+    };
+  });
+  ipcMain.handle('desktop:toggle-windows-protection', async (_event, enabled: unknown) => {
+    const active = windowsAgent.toggleActive(Boolean(enabled));
+    if (active) {
+      await networkInterceptor.start();
+    } else {
+      await networkInterceptor.stop();
+    }
+    return { success: true, active };
+  });
+  ipcMain.handle('desktop:toggle-windows-target', (_event, targetId: unknown, enabled: unknown) => {
+    if (typeof targetId === 'string' && typeof enabled === 'boolean') {
+      windowsAgent.setTargetEnabled(targetId, enabled);
+    }
+    return { success: true };
+  });
+  ipcMain.handle('desktop:inspect-text', (_event, text: unknown) => {
+    if (typeof text !== 'string') return { blocked: false };
+    return windowsAgent.inspectClipboard(text);
+  });
   ipcMain.handle('desktop:get-usb-monitor-status', () => usbDlpMonitor.getStatus());
   ipcMain.handle('desktop:set-usb-monitoring', async (_event, enabled: unknown) => {
     if (typeof enabled !== 'boolean') return { success: false, error: 'Monitoring choice must be enabled or disabled.' };
@@ -695,7 +740,11 @@ function setupIpcHandlers() {
 
       if (data.policy) {
         securityEngine.updatePolicy(data.policy);
+        windowsAgent.updateScanner(securityEngine);
+        networkInterceptor.updateScanner(securityEngine);
       }
+      windowsAgent.startClipboardMonitor();
+      void networkInterceptor.start();
 
       return { success: true, ...data };
     } catch (err: any) {
@@ -718,6 +767,8 @@ function setupIpcHandlers() {
 
   // Logout
   ipcMain.handle('desktop:logout', async () => {
+    windowsAgent.stopClipboardMonitor();
+    await networkInterceptor.stop();
     const token = store.get('token');
     const deviceId = store.get('deviceId');
     await usbDlpMonitor.stop();

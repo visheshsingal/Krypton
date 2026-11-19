@@ -119,8 +119,8 @@ export default function HomePage() {
                 </>
               ) : null}
               <a
-                href="/downloads/Krypton-Android-0.1.0-test.apk?v=0.2.1"
-                download
+                href="/downloads/Krypton-Android-0.2.1-test.apk"
+                download="Krypton-Android-0.2.1-test.apk"
                 className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-300/30 bg-emerald-400/[0.08] px-6 py-3.5 text-sm font-semibold text-emerald-100 transition hover:border-emerald-300/60 hover:bg-emerald-400/[0.14]"
               >
                 <Download className="h-4 w-4" />
@@ -347,8 +347,8 @@ export default function HomePage() {
               </>
             ) : null}
             <a
-              href="/downloads/Krypton-Android-0.1.0-test.apk?v=0.2.1"
-              download
+              href="/downloads/Krypton-Android-0.2.1-test.apk"
+              download="Krypton-Android-0.2.1-test.apk"
               className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-300/30 bg-emerald-400/[0.08] px-5 py-3 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-400/[0.14]"
             >
               <Download className="h-4 w-4" />
