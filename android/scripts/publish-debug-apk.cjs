@@ -48,8 +48,9 @@ fs.writeFileSync(
     signatureStatus: 'debug-keystore',
     limitations: [
       'Test build only; not signed with a production release key.',
-      'AI prompt scanning is best-effort inside Krypton Secure Browser only.',
-      'Other Android apps, including native AI apps, are not monitored.',
+      'Accessibility scanning checks editable text locally and may not work in every app.',
+      'The app warns about detected secrets but cannot guarantee blocking submissions.',
+      'Text is not stored or transmitted by this app.',
     ],
   }, null, 2)}\n`,
 );

@@ -32,9 +32,9 @@ export default function PrivacyPage() {
           </section>
 
           <section className="space-y-2">
-            <h2 className="text-lg font-bold text-slate-900">4. Android Test App</h2>
+            <h2 className="text-lg font-bold text-slate-900">4. Android App</h2>
             <p>
-              The Android test app registers the phone to the signed-in employee account, stores authentication tokens encrypted with the Android Keystore, and periodically checks device status and company policy. In its Krypton secure browser, supported AI-site prompts are scanned locally on a best-effort basis. By default, the app sends security-event metadata (such as site hostname, matched rule, risk level, action, and device identifier) but not raw prompt text. It does not monitor native AI apps or request Accessibility, screen-capture, VPN, or device-admin permissions. The Android app can use its last validated policy during the company's configured offline grace period; administrators can revoke its device registration.
+              The optional Android Accessibility service checks text in editable fields for common secret patterns when the user explicitly enables it in Android Settings. Password-entry fields are skipped. Checks run locally; the app does not save or transmit the text or detection results. The service does not capture screenshots or monitor other screen content. Android apps may hide text from Accessibility, and detections are warnings rather than guaranteed submission blocking. The service can be disabled at any time in Android Accessibility settings.
             </p>
           </section>
 

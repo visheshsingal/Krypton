@@ -1920,7 +1920,7 @@ export default function CompanyDashboard() {
                 </h1>
                 <p className="mt-1 text-sm text-slate-400">
                   {activeTab === 'android'
-                    ? 'Manage enrolled Android phones. AI website protection currently applies inside the Krypton secure browser only.'
+                    ? 'Android text checks are opt-in and run locally on each phone. This app does not enroll phones or report detections to this dashboard.'
                     : 'See connected devices and manage access.'}
                 </p>
               </div>

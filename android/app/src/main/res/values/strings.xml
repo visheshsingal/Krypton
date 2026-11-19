@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Krypton Security</string>
+    <string name="accessibility_service_label">Krypton local text protection</string>
+    <string name="accessibility_service_description">Checks editable text for common secrets on this device only. Text is not saved or sent. Enable only if you want this protection.</string>
+</resources>

@@ -80,7 +80,7 @@ export default function HomePage() {
             </h1>
             <p className="mx-auto mt-6 max-w-2xl text-base leading-7 text-slate-400 sm:text-lg">
               Krypton scans supported AI prompts locally in Chrome and Edge using its shared browser extension.
-              The Android test app scans supported AI sites inside its secure browser only; native AI apps are not monitored.
+              The optional Android app checks editable text for common secrets on-device after you enable its Accessibility service.
             </p>
             <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row sm:flex-wrap">
               {showWindowsDownload ? (
@@ -119,7 +119,7 @@ export default function HomePage() {
                 </>
               ) : null}
               <a
-                href="/downloads/Krypton-Android-0.1.0-test.apk"
+                href="/downloads/Krypton-Android-0.1.0-test.apk?v=0.2.0"
                 download
                 className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-300/30 bg-emerald-400/[0.08] px-6 py-3.5 text-sm font-semibold text-emerald-100 transition hover:border-emerald-300/60 hover:bg-emerald-400/[0.14]"
               >
@@ -340,7 +340,7 @@ export default function HomePage() {
               </>
             ) : null}
             <a
-              href="/downloads/Krypton-Android-0.1.0-test.apk"
+              href="/downloads/Krypton-Android-0.1.0-test.apk?v=0.2.0"
               download
               className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-300/30 bg-emerald-400/[0.08] px-5 py-3 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-400/[0.14]"
             >
