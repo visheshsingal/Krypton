@@ -56,6 +56,16 @@ export interface LicenseInfo {
   createdAt: string;
 }
 
+export type DeviceOwnership = 'company' | 'personal';
+
+export interface DeviceScheduleConfig {
+  enabled: boolean;
+  workDays: number[]; // 1 = Monday, 2 = Tuesday, ... 7 = Sunday
+  startTime: string; // "09:00" (HH:mm)
+  endTime: string; // "18:00"
+  timezone: string; // "Asia/Kolkata" or standard IANA
+}
+
 export interface DeviceInfo {
   id: string;
   companyId: string;
@@ -68,6 +78,8 @@ export interface DeviceInfo {
   osVersion: string;
   appVersion: string;
   status: DeviceStatus;
+  ownership?: DeviceOwnership;
+  schedule?: DeviceScheduleConfig;
   lastHeartbeatAt: string;
   activatedAt: string;
 }
@@ -179,6 +191,9 @@ export interface DesktopActivationResponse {
   policy?: SecurityPolicyDTO;
   user?: UserSummary;
   device?: DeviceInfo;
+  serverTime?: string;
+  ownership?: DeviceOwnership;
+  schedule?: DeviceScheduleConfig;
   error?: string;
 }
 
@@ -193,5 +208,8 @@ export interface HeartbeatResponse {
   policy?: SecurityPolicyDTO;
   offlineGraceHours: number;
   nextCheckInMinutes: number;
+  serverTime?: string;
+  ownership?: DeviceOwnership;
+  schedule?: DeviceScheduleConfig;
   message?: string;
 }

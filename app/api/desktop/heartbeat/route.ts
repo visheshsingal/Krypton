@@ -56,6 +56,15 @@ export async function POST(req: NextRequest) {
       valid: true,
       status: 'active',
       policy,
+      serverTime: new Date().toISOString(),
+      ownership: device.ownership || 'company',
+      schedule: device.schedule || {
+        enabled: false,
+        workDays: [1, 2, 3, 4, 5],
+        startTime: '09:00',
+        endTime: '18:00',
+        timezone: 'Asia/Kolkata',
+      },
       offlineGraceHours: license.offlineGraceHours || 72,
       nextCheckInMinutes: 60,
     });

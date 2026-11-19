@@ -25,16 +25,27 @@ import {
 } from './protected-browser-policy';
 import { WindowsProtectionAgent } from './windows-protection';
 import { LocalNetworkInterceptor } from './network-interceptor';
+import { TamperProofScheduleEvaluator } from '../engine/schedule-evaluator';
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 const store = new DesktopStore();
 const securityEngine = new PromptSecurityEngine();
+const scheduleEvaluator = new TamperProofScheduleEvaluator();
 const usbDlpMonitor = new UsbDlpMonitor({
   enumerateVolumes: enumerateRemovableUsbVolumes,
   onEvent: reportDesktopUsbEvent,
 });
-const windowsAgent = new WindowsProtectionAgent(securityEngine, (eventData) => void reportDesktopEvent(eventData));
-const networkInterceptor = new LocalNetworkInterceptor(securityEngine, (eventData) => void reportDesktopEvent(eventData));
+const windowsAgent = new WindowsProtectionAgent(
+  securityEngine,
+  (eventData) => void reportDesktopEvent(eventData),
+  () => scheduleEvaluator.isProtectionActiveNow().active,
+);
+const networkInterceptor = new LocalNetworkInterceptor(
+  securityEngine,
+  (eventData) => void reportDesktopEvent(eventData),
+  8787,
+  () => scheduleEvaluator.isProtectionActiveNow().active,
+);
 
 // Load cached policy if available
 const cachedPolicy = store.get('policy');
@@ -536,6 +547,8 @@ function setupIpcHandlers() {
         blockedCount: summary.stats.blockedCount + netStats.threatsBlocked,
         allowedCount: summary.stats.allowedCount + netStats.allowedRequests,
       },
+      scheduleStatus: scheduleEvaluator.isProtectionActiveNow(),
+      scheduleConfig: scheduleEvaluator.getConfig(),
       networkInterceptor: netStats,
     };
   });
@@ -736,6 +749,13 @@ function setupIpcHandlers() {
       store.set('lastSuccessfulValidation', new Date().toISOString());
       if (data.license?.offlineGraceHours) {
         store.set('offlineGraceHours', data.license.offlineGraceHours);
+      }
+
+      if (data.serverTime) {
+        scheduleEvaluator.syncServerTime(data.serverTime);
+      }
+      if (data.ownership || data.schedule) {
+        scheduleEvaluator.updateConfig(data.ownership, data.schedule);
       }
 
       if (data.policy) {
@@ -1004,6 +1024,12 @@ async function performBackgroundHeartbeat() {
     const data = (await res.json()) as any;
     if (res.ok && data.valid) {
       store.set('lastSuccessfulValidation', new Date().toISOString());
+      if (data.serverTime) {
+        scheduleEvaluator.syncServerTime(data.serverTime);
+      }
+      if (data.ownership || data.schedule) {
+        scheduleEvaluator.updateConfig(data.ownership, data.schedule);
+      }
       if (data.policy) {
         store.set('policy', data.policy);
         securityEngine.updatePolicy(data.policy);

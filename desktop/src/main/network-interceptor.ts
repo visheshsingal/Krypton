@@ -21,6 +21,7 @@ export class LocalNetworkInterceptor {
   private isRunning = false;
   private scanner: PromptSecurityEngine;
   private onReportEvent?: (event: Record<string, unknown>) => void;
+  private isScheduleActive?: () => boolean;
   private requestsInspected = 0;
   private threatsBlocked = 0;
   private allowedRequests = 0;
@@ -29,10 +30,12 @@ export class LocalNetworkInterceptor {
     scanner: PromptSecurityEngine,
     onReportEvent?: (event: Record<string, unknown>) => void,
     port = 8787,
+    isScheduleActive?: () => boolean,
   ) {
     this.scanner = scanner;
     this.onReportEvent = onReportEvent;
     this.port = port;
+    this.isScheduleActive = isScheduleActive;
   }
 
   public updateScanner(scanner: PromptSecurityEngine): void {
@@ -94,6 +97,21 @@ export class LocalNetworkInterceptor {
     body: string,
   ): { blocked: boolean; result: PromptScanResult } {
     this.requestsInspected++;
+
+    if (this.isScheduleActive && !this.isScheduleActive()) {
+      this.allowedRequests++;
+      return {
+        blocked: false,
+        result: {
+          hasRisk: false,
+          highestRisk: 'LOW',
+          action: 'allow',
+          matches: [],
+          redactedPrompt: body,
+          explanation: 'Allowed: Outside scheduled monitoring hours (Personal device).',
+        },
+      };
+    }
 
     if (!isAiPromptRequestUrl(url, method)) {
       this.allowedRequests++;

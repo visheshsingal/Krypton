@@ -9,6 +9,14 @@ export interface IDevice extends Document {
   osVersion: string;
   appVersion: string;
   status: 'active' | 'revoked' | 'offline';
+  ownership: 'company' | 'personal';
+  schedule?: {
+    enabled: boolean;
+    workDays: number[];
+    startTime: string;
+    endTime: string;
+    timezone: string;
+  };
   lastHeartbeatAt: Date;
   activatedAt: Date;
   revokedAt?: Date;
@@ -60,6 +68,19 @@ const DeviceSchema = new Schema<IDevice>(
       enum: ['active', 'revoked', 'offline'],
       default: 'active',
       index: true,
+    },
+    ownership: {
+      type: String,
+      enum: ['company', 'personal'],
+      default: 'company',
+      index: true,
+    },
+    schedule: {
+      enabled: { type: Boolean, default: false },
+      workDays: { type: [Number], default: [1, 2, 3, 4, 5] },
+      startTime: { type: String, default: '09:00' },
+      endTime: { type: String, default: '18:00' },
+      timezone: { type: String, default: 'Asia/Kolkata' },
     },
     lastHeartbeatAt: {
       type: Date,

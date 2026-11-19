@@ -60,6 +60,14 @@ export async function GET(req: NextRequest) {
           osVersion: d.osVersion,
           appVersion: d.appVersion,
           status: d.status,
+          ownership: d.ownership || 'company',
+          schedule: d.schedule || {
+            enabled: false,
+            workDays: [1, 2, 3, 4, 5],
+            startTime: '09:00',
+            endTime: '18:00',
+            timezone: 'Asia/Kolkata',
+          },
           lastHeartbeatAt: d.lastHeartbeatAt,
           activatedAt: d.activatedAt,
           extension: {

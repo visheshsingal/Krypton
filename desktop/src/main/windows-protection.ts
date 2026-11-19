@@ -93,15 +93,18 @@ export class WindowsProtectionAgent {
   private allowedCount = 0;
   private recentEvents: SecurityEventRecord[] = [];
   private onReportEvent?: (event: Record<string, unknown>) => void;
+  private isScheduleActive?: () => boolean;
   private clipboardPollTimer: NodeJS.Timeout | null = null;
   private lastClipboardText = '';
 
   constructor(
     scanner: PromptSecurityEngine,
     onReportEvent?: (event: Record<string, unknown>) => void,
+    isScheduleActive?: () => boolean,
   ) {
     this.scanner = scanner;
     this.onReportEvent = onReportEvent;
+    this.isScheduleActive = isScheduleActive;
   }
 
   public updateScanner(scanner: PromptSecurityEngine): void {
@@ -139,7 +142,7 @@ export class WindowsProtectionAgent {
   }
 
   public inspectClipboard(text: string): { blocked: boolean; result: PromptScanResult } {
-    if (!this.active || !text || text.trim().length === 0) {
+    if (!this.active || !text || text.trim().length === 0 || (this.isScheduleActive && !this.isScheduleActive())) {
       return {
         blocked: false,
         result: {

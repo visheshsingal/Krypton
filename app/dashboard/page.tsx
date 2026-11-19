@@ -36,6 +36,8 @@ import {
   Edit2,
   Info,
   ExternalLink,
+  Clock,
+  Calendar,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -102,6 +104,98 @@ export default function CompanyDashboard() {
   const [seatAssignmentPasswordConfirm, setSeatAssignmentPasswordConfirm] = useState('');
   const [seatAssignmentError, setSeatAssignmentError] = useState<string | null>(null);
   const [seatAssignmentLoading, setSeatAssignmentLoading] = useState(false);
+
+  // Schedule & BYOD Device State
+  const [scheduleModalDevice, setScheduleModalDevice] = useState<any | null>(null);
+  const [scheduleOwnership, setScheduleOwnership] = useState<'company' | 'personal'>('company');
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const [scheduleWorkDays, setScheduleWorkDays] = useState<number[]>([1, 2, 3, 4, 5]);
+  const [scheduleStartTime, setScheduleStartTime] = useState('09:00');
+  const [scheduleEndTime, setScheduleEndTime] = useState('18:00');
+  const [scheduleTimezone, setScheduleTimezone] = useState('Asia/Kolkata');
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
+  const [scheduleSuccess, setScheduleSuccess] = useState<string | null>(null);
+
+  const openScheduleModal = (dev: any) => {
+    setScheduleModalDevice(dev);
+    setScheduleOwnership(dev.ownership || 'company');
+    const sched = dev.schedule || {};
+    setScheduleEnabled(sched.enabled === true);
+    setScheduleWorkDays(Array.isArray(sched.workDays) ? sched.workDays : [1, 2, 3, 4, 5]);
+    setScheduleStartTime(sched.startTime || '09:00');
+    setScheduleEndTime(sched.endTime || '18:00');
+    setScheduleTimezone(sched.timezone || 'Asia/Kolkata');
+    setScheduleError(null);
+    setScheduleSuccess(null);
+  };
+
+  const handleToggleWorkDay = (day: number) => {
+    setScheduleWorkDays((prev) =>
+      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort()
+    );
+  };
+
+  const handleSaveDeviceSchedule = async () => {
+    if (!scheduleModalDevice) return;
+    setScheduleLoading(true);
+    setScheduleError(null);
+    setScheduleSuccess(null);
+
+    try {
+      const token = localStorage.getItem('krypton_token');
+      const res = await fetch(`/api/company/devices/${scheduleModalDevice.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          ownership: scheduleOwnership,
+          schedule: {
+            enabled: scheduleEnabled,
+            workDays: scheduleWorkDays,
+            startTime: scheduleStartTime,
+            endTime: scheduleEndTime,
+            timezone: scheduleTimezone,
+          },
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to update device schedule policy');
+      }
+
+      setDevices((prev) =>
+        prev.map((d) =>
+          d.id === scheduleModalDevice.id
+            ? {
+                ...d,
+                ownership: scheduleOwnership,
+                schedule: {
+                  enabled: scheduleEnabled,
+                  workDays: scheduleWorkDays,
+                  startTime: scheduleStartTime,
+                  endTime: scheduleEndTime,
+                  timezone: scheduleTimezone,
+                },
+              }
+            : d
+        )
+      );
+
+      setScheduleSuccess('Device schedule policy updated successfully!');
+      setTimeout(() => {
+        setScheduleModalDevice(null);
+        setScheduleSuccess(null);
+      }, 1000);
+    } catch (err: any) {
+      setScheduleError(err.message || 'Error updating device schedule');
+    } finally {
+      setScheduleLoading(false);
+    }
+  };
 
   const [newRuleCode, setNewRuleCode] = useState('');
   const [newRuleName, setNewRuleName] = useState('');
@@ -1936,6 +2030,7 @@ export default function CompanyDashboard() {
                       <th className="p-4">Device Name</th>
                       <th className="p-4">Assigned User</th>
                       <th className="p-4">{activeTab === 'android' ? 'Android app' : 'Protection'}</th>
+                      <th className="p-4">Schedule / Policy</th>
                       <th className="p-4">Last active</th>
                       <th className="p-4">Status</th>
                       <th className="p-4 text-right">Actions</th>
@@ -1944,12 +2039,12 @@ export default function CompanyDashboard() {
                   <tbody className="divide-y divide-slate-800/60">
                     {(activeTab === 'android' ? androidDevices.length : devices.length) === 0 ? (
                       <tr>
-                        <td colSpan={6} className="p-10 text-center text-sm text-slate-500">
+                        <td colSpan={7} className="p-10 text-center text-sm text-slate-500">
                           {activeTab === 'android' ? 'No Android devices have enrolled yet.' : 'No devices have connected yet.'}
                         </td>
                       </tr>
                     ) : displayedDevices.length === 0 ? (
-                      <tr><td colSpan={6} className="p-10 text-center text-sm text-slate-500">No devices match this search.</td></tr>
+                      <tr><td colSpan={7} className="p-10 text-center text-sm text-slate-500">No devices match this search.</td></tr>
                     ) : displayedDevices.map((dev) => (
                       <tr key={dev.id} className="text-slate-300 hover:bg-slate-800/30">
                         <td className="p-4 font-bold text-white flex items-center space-x-2">
@@ -1971,6 +2066,19 @@ export default function CompanyDashboard() {
                               )}
                             </>}
                         </td>
+                        <td className="p-4 text-[11px]">
+                          {dev.ownership === 'personal' ? (
+                            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 font-semibold text-amber-300">
+                              <Clock className="h-3 w-3" />
+                              BYOD ({dev.schedule?.enabled ? `${dev.schedule.startTime}-${dev.schedule.endTime}` : '24/7'})
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-0.5 font-semibold text-sky-300">
+                              <ShieldCheck className="h-3 w-3" />
+                              Company (24/7)
+                            </span>
+                          )}
+                        </td>
                         <td className="p-4 text-slate-500 font-mono text-[11px]">
                           {dev.lastHeartbeatAt ? new Date(dev.lastHeartbeatAt).toLocaleString() : '—'}
                         </td>
@@ -1984,6 +2092,14 @@ export default function CompanyDashboard() {
                           </span>
                         </td>
                         <td className="p-4 text-right">
+                          <button
+                            onClick={() => openScheduleModal(dev)}
+                            className="mr-2 rounded border border-indigo-700/60 bg-indigo-950/40 px-2.5 py-1 text-[11px] text-indigo-200 transition hover:bg-indigo-900/60 inline-flex items-center gap-1"
+                            title="Configure Schedule / BYOD Working Hours"
+                          >
+                            <Clock className="h-3 w-3" />
+                            Schedule
+                          </button>
                           {dev.extension?.adminRevoked && (
                             <button
                               onClick={() => handleReauthorizeExtension(dev.deviceId)}
@@ -3157,6 +3273,211 @@ export default function CompanyDashboard() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Configure Device Ownership & BYOD Schedule Modal */}
+      {scheduleModalDevice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-2xl border border-slate-800 bg-[#0b1220] p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h2 className="text-base font-bold text-white flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-sky-400" />
+                  <span>Configure Device Policy & Schedule</span>
+                </h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Device: <strong className="text-white">{scheduleModalDevice.deviceName}</strong> · Assigned to: <span className="text-sky-300">{scheduleModalDevice.user?.name || scheduleModalDevice.user?.email || 'N/A'}</span>
+                </p>
+              </div>
+              <button
+                onClick={() => setScheduleModalDevice(null)}
+                className="text-slate-400 hover:text-white"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Ownership Type Radio / Cards */}
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Device Ownership Model
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setScheduleOwnership('company')}
+                  className={`rounded-xl border p-3.5 text-left transition ${
+                    scheduleOwnership === 'company'
+                      ? 'border-sky-500 bg-sky-500/10 text-white'
+                      : 'border-slate-800 bg-slate-900/50 text-slate-400 hover:border-slate-700'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-sky-400" />
+                    <strong className="text-xs">Company Device</strong>
+                  </div>
+                  <p className="mt-1 text-[11px] leading-4 text-slate-400">
+                    24×7 Continuous Protection. Round-the-clock monitoring without time restrictions.
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScheduleOwnership('personal');
+                    setScheduleEnabled(true);
+                  }}
+                  className={`rounded-xl border p-3.5 text-left transition ${
+                    scheduleOwnership === 'personal'
+                      ? 'border-amber-500 bg-amber-500/10 text-white'
+                      : 'border-slate-800 bg-slate-900/50 text-slate-400 hover:border-slate-700'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-amber-400" />
+                    <strong className="text-xs">Personal (BYOD) Device</strong>
+                  </div>
+                  <p className="mt-1 text-[11px] leading-4 text-slate-400">
+                    Working Hours Protection. Excludes personal hours & weekends for employee privacy.
+                  </p>
+                </button>
+              </div>
+            </div>
+
+            {/* If Personal / BYOD is chosen: Schedule configuration */}
+            {scheduleOwnership === 'personal' && (
+              <div className="space-y-4 rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-300">
+                    Enforce Working Hours Schedule
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={scheduleEnabled}
+                    onChange={(e) => setScheduleEnabled(e.target.checked)}
+                    className="h-4 w-4 rounded accent-sky-400 cursor-pointer"
+                  />
+                </div>
+
+                {scheduleEnabled && (
+                  <>
+                    {/* Working Days Selector */}
+                    <div>
+                      <label className="mb-1.5 block text-[11px] font-medium text-slate-400">
+                        Active Monitoring Days (Unchecked days are excluded / private)
+                      </label>
+                      <div className="flex gap-1.5">
+                        {[
+                          { label: 'Mon', day: 1 },
+                          { label: 'Tue', day: 2 },
+                          { label: 'Wed', day: 3 },
+                          { label: 'Thu', day: 4 },
+                          { label: 'Fri', day: 5 },
+                          { label: 'Sat', day: 6 },
+                          { label: 'Sun', day: 7 },
+                        ].map(({ label, day }) => (
+                          <button
+                            key={day}
+                            type="button"
+                            onClick={() => handleToggleWorkDay(day)}
+                            className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition ${
+                              scheduleWorkDays.includes(day)
+                                ? 'bg-sky-500 text-slate-950 shadow-sm'
+                                : 'bg-slate-900 text-slate-500 hover:bg-slate-800'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Working Hours Time Window */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="mb-1 block text-[11px] font-medium text-slate-400">
+                          Monitoring Starts (HH:mm)
+                        </label>
+                        <input
+                          type="time"
+                          value={scheduleStartTime}
+                          onChange={(e) => setScheduleStartTime(e.target.value)}
+                          className="w-full rounded-xl border border-slate-700 bg-slate-900 p-2 text-xs text-white focus:border-sky-400 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-[11px] font-medium text-slate-400">
+                          Monitoring Ends (HH:mm)
+                        </label>
+                        <input
+                          type="time"
+                          value={scheduleEndTime}
+                          onChange={(e) => setScheduleEndTime(e.target.value)}
+                          className="w-full rounded-xl border border-slate-700 bg-slate-900 p-2 text-xs text-white focus:border-sky-400 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Timezone */}
+                    <div>
+                      <label className="mb-1 block text-[11px] font-medium text-slate-400">
+                        Company Timezone
+                      </label>
+                      <select
+                        value={scheduleTimezone}
+                        onChange={(e) => setScheduleTimezone(e.target.value)}
+                        className="w-full rounded-xl border border-slate-700 bg-slate-900 p-2 text-xs text-white focus:border-sky-400 focus:outline-none"
+                      >
+                        <option value="Asia/Kolkata">Asia/Kolkata (IST +5:30)</option>
+                        <option value="UTC">UTC (Coordinated Universal Time)</option>
+                        <option value="America/New_York">America/New_York (EST / EDT)</option>
+                        <option value="Europe/London">Europe/London (GMT / BST)</option>
+                        <option value="Asia/Dubai">Asia/Dubai (GST +4:00)</option>
+                        <option value="Asia/Singapore">Asia/Singapore (SGT +8:00)</option>
+                      </select>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Anti-tamper guarantee banner */}
+            <div className="rounded-xl border border-sky-500/20 bg-sky-950/30 p-3 text-[11px] leading-5 text-sky-200">
+              🛡️ <strong>Tamper-Proof Guarantee:</strong> The Krypton agent evaluates schedules strictly against <strong>authoritative server time</strong>. Manually altering phone or computer clocks will not bypass or disable monitoring.
+            </div>
+
+            {scheduleError && (
+              <p role="alert" className="rounded-lg border border-red-900/70 bg-red-950/30 p-2.5 text-xs text-red-200">
+                {scheduleError}
+              </p>
+            )}
+            {scheduleSuccess && (
+              <p role="status" className="rounded-lg border border-emerald-900/70 bg-emerald-950/30 p-2.5 text-xs text-emerald-200">
+                {scheduleSuccess}
+              </p>
+            )}
+
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-2 border-t border-slate-800 pt-3">
+              <button
+                type="button"
+                onClick={() => setScheduleModalDevice(null)}
+                disabled={scheduleLoading}
+                className="rounded-xl px-4 py-2 text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveDeviceSchedule}
+                disabled={scheduleLoading}
+                className="rounded-xl bg-sky-400 px-4 py-2 text-xs font-semibold text-slate-950 hover:bg-sky-300 transition disabled:opacity-50"
+              >
+                {scheduleLoading ? 'Saving Policy…' : 'Save Device Policy'}
+              </button>
+            </div>
           </div>
         </div>
       )}
