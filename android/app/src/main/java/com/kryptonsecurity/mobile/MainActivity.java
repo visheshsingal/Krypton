@@ -61,7 +61,7 @@ public final class MainActivity extends Activity {
     private static final String POLICY_KEY = "policy";
     private static final String LAST_VALIDATION_KEY = "last_validation";
     private static final String GRACE_HOURS_KEY = "offline_grace_hours";
-    private static final String APP_VERSION = "0.1.1";
+    private static final String APP_VERSION = BuildConfig.VERSION_NAME;
     private static final List<String> AI_HOSTS = Arrays.asList(
             "chatgpt.com", "openai.com", "claude.ai", "anthropic.com",
             "gemini.google.com", "copilot.microsoft.com",

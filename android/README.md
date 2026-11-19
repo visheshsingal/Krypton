@@ -13,7 +13,7 @@ cd android
 ./build-debug-apk.sh
 ```
 
-The command builds a debug-signed APK and copies it to `public/downloads/Krypton-Android-0.1.0-test.apk`, with its checksum and `debug-test-build` status in `public/downloads/android-release.json`. Once the website is deployed with those files, the home/download page shows **Download Android APK**. Android may ask the user to allow installation from the browser or file manager that opened the APK.
+The command builds a debug-signed, versioned APK in `public/downloads/` and also updates the stable download URL `/downloads/Krypton-Android-0.1.0-test.apk` used by the website button. Its checksum and `debug-test-build` status are recorded in `public/downloads/android-release.json`. Deploy the website to publish the APK at the existing download URL. Android may ask the user to allow installation from the browser or file manager that opened the APK.
 
 This debug APK is for testing only. Do not distribute it as a production release; production publishing needs a protected release-signing key and additional Play Store/privacy review.
 

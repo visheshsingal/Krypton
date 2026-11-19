@@ -5,17 +5,31 @@ const path = require('node:path');
 const androidRoot = path.resolve(__dirname, '..');
 const repositoryRoot = path.resolve(androidRoot, '..');
 const apkPath = path.join(androidRoot, 'app/build/outputs/apk/debug/app-debug.apk');
+const metadataPath = path.join(androidRoot, 'app/build/outputs/apk/debug/output-metadata.json');
 const downloadsDir = path.join(repositoryRoot, 'public/downloads');
-const apkName = 'Krypton-Android-0.1.0-test.apk';
-const destination = path.join(downloadsDir, apkName);
 
 if (!fs.existsSync(apkPath)) {
   throw new Error(`Debug APK was not built: ${apkPath}`);
 }
+if (!fs.existsSync(metadataPath)) {
+  throw new Error(`Android build metadata is missing: ${metadataPath}`);
+}
+
+const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
+const output = metadata.elements?.find((element) => element.outputFile === path.basename(apkPath));
+if (!output?.versionName || !Number.isInteger(output.versionCode)) {
+  throw new Error('Android build metadata does not contain a valid APK version.');
+}
+
+const apkName = `Krypton-Android-${output.versionName}-test.apk`;
+const destination = path.join(downloadsDir, apkName);
+const stableApkName = 'Krypton-Android-0.1.0-test.apk';
+const stableDestination = path.join(downloadsDir, stableApkName);
 
 fs.mkdirSync(downloadsDir, { recursive: true });
 fs.copyFileSync(apkPath, destination);
-const apk = fs.readFileSync(destination);
+fs.copyFileSync(apkPath, stableDestination);
+const apk = fs.readFileSync(stableDestination);
 if (apk.length < 4 || apk[0] !== 0x50 || apk[1] !== 0x4b) {
   throw new Error('The Android build output is not a valid APK archive.');
 }
@@ -24,10 +38,11 @@ fs.writeFileSync(
   path.join(downloadsDir, 'android-release.json'),
   `${JSON.stringify({
     available: true,
-    version: '0.1.0',
+    version: output.versionName,
+    versionCode: output.versionCode,
     releaseStatus: 'debug-test-build',
-    packageName: apkName,
-    downloadUrl: `/downloads/${apkName}`,
+    packageName: stableApkName,
+    downloadUrl: `/downloads/${stableApkName}`,
     fileSizeBytes: apk.length,
     sha256Checksum: crypto.createHash('sha256').update(apk).digest('hex'),
     signatureStatus: 'debug-keystore',
@@ -40,3 +55,4 @@ fs.writeFileSync(
 );
 
 console.log(`Published Android test APK: ${destination} (${apk.length} bytes)`);
+console.log(`Updated existing Android download URL: ${stableDestination}`);

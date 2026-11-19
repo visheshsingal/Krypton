@@ -20,5 +20,6 @@ export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
 "$ANDROID_ROOT/gradlew" --no-daemon -p "$ANDROID_ROOT" assembleDebug
 node "$ANDROID_ROOT/scripts/publish-debug-apk.cjs"
 
-printf '\nAPK download URL for local app preview: /downloads/Krypton-Android-0.1.0-test.apk\n'
+APK_VERSION=$(node -p "require('$ANDROID_ROOT/app/build/outputs/apk/debug/output-metadata.json').elements[0].versionName")
+printf '\nAPK version %s published to the existing download URL: /downloads/Krypton-Android-0.1.0-test.apk\n' "$APK_VERSION"
 printf 'Install the APK on a test phone and allow installation from this source when Android prompts.\n'
