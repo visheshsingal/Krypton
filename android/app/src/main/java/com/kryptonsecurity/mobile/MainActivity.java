@@ -61,7 +61,7 @@ public final class MainActivity extends Activity {
     private static final String POLICY_KEY = "policy";
     private static final String LAST_VALIDATION_KEY = "last_validation";
     private static final String GRACE_HOURS_KEY = "offline_grace_hours";
-    private static final String APP_VERSION = "0.1.0";
+    private static final String APP_VERSION = "0.1.1";
     private static final List<String> AI_HOSTS = Arrays.asList(
             "chatgpt.com", "openai.com", "claude.ai", "anthropic.com",
             "gemini.google.com", "copilot.microsoft.com",
@@ -167,7 +167,26 @@ public final class MainActivity extends Activity {
         form.addView(email, margin(0, 0, 0, 12));
         EditText password = input("Password", true);
         password.setImeOptions(EditorInfo.IME_ACTION_DONE);
-        form.addView(password, margin(0, 0, 0, 16));
+        LinearLayout passwordRow = new LinearLayout(this);
+        passwordRow.setOrientation(LinearLayout.HORIZONTAL);
+        passwordRow.setGravity(Gravity.CENTER_VERTICAL);
+        Button passwordVisibility = button("Show", false);
+        passwordVisibility.setMinimumWidth(dp(68));
+        passwordVisibility.setOnClickListener(view -> {
+            boolean showPassword = password.getInputType() ==
+                    (android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+            password.setInputType(android.text.InputType.TYPE_CLASS_TEXT |
+                    (showPassword
+                            ? android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+                            : android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD));
+            password.setSelection(password.length());
+            passwordVisibility.setText(showPassword ? "Hide" : "Show");
+        });
+        passwordRow.addView(password, new LinearLayout.LayoutParams(0, -2, 1));
+        LinearLayout.LayoutParams visibilityParams = new LinearLayout.LayoutParams(-2, -2);
+        visibilityParams.leftMargin = dp(8);
+        passwordRow.addView(passwordVisibility, visibilityParams);
+        form.addView(passwordRow, margin(0, 0, 0, 16));
 
         TextView error = label(errorMessage == null ? "" : errorMessage, 13, Color.rgb(252, 165, 165), false);
         error.setVisibility(errorMessage == null ? View.GONE : View.VISIBLE);

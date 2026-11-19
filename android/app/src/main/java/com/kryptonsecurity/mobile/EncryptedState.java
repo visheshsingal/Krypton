@@ -15,7 +15,7 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 
 final class EncryptedState {
-    private static final String KEY_ALIAS = "krypton_android_auth_v1";
+    private static final String KEY_ALIAS = "krypton_android_auth_v2";
     private static final String PREFS = "krypton_android_private_state";
     private static final String ACCESS_TOKEN = "access_token";
     private static final String REFRESH_TOKEN = "refresh_token";
@@ -88,7 +88,7 @@ final class EncryptedState {
                 KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT
         ).setBlockModes(KeyProperties.BLOCK_MODE_GCM)
                 .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setRandomizedEncryptionRequired(true)
+                .setRandomizedEncryptionRequired(false)
                 .build());
         return generator.generateKey();
     }
