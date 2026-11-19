@@ -2,6 +2,7 @@ package com.kryptonsecurity.mobile;
 
 import android.accessibilityservice.AccessibilityServiceInfo;
 import android.app.Activity;
+import android.content.ComponentName;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -71,8 +72,7 @@ public final class MainActivity extends Activity {
 
         setupButton = button("Open Accessibility Settings", true);
         panel.addView(setupButton, margin(0, 0, 0, 18));
-        setupButton.setOnClickListener(view ->
-                startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
+        setupButton.setOnClickListener(view -> openProtectionSettings());
 
         panel.addView(label("WHAT IT CHECKS", 11, CYAN, true), margin(0, 0, 0, 7));
         panel.addView(label(
@@ -120,6 +120,20 @@ public final class MainActivity extends Activity {
             }
         }
         return false;
+    }
+
+    private void openProtectionSettings() {
+        Intent serviceSettings = new Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS")
+                .putExtra(
+                        "android.provider.extra.ACCESSIBILITY_SERVICE_COMPONENT_NAME",
+                        new ComponentName(this, PromptGuardService.class).flattenToString()
+                );
+        if (serviceSettings.resolveActivity(getPackageManager()) != null) {
+            startActivity(serviceSettings);
+            return;
+        }
+
+        startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
     }
 
     private TextView label(String text, int size, int color, boolean bold) {

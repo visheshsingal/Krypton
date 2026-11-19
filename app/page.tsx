@@ -80,7 +80,7 @@ export default function HomePage() {
             </h1>
             <p className="mx-auto mt-6 max-w-2xl text-base leading-7 text-slate-400 sm:text-lg">
               Krypton scans supported AI prompts locally in Chrome and Edge using its shared browser extension.
-              The optional Android app checks editable text for common secrets on-device after you enable its Accessibility service.
+              Android can check text after Accessibility is enabled. The optional iOS keyboard scans text entered through Krypton Keyboard only.
             </p>
             <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row sm:flex-wrap">
               {showWindowsDownload ? (
@@ -119,12 +119,20 @@ export default function HomePage() {
                 </>
               ) : null}
               <a
-                href="/downloads/Krypton-Android-0.1.0-test.apk?v=0.2.0"
+                href="/downloads/Krypton-Android-0.1.0-test.apk?v=0.2.1"
                 download
                 className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-300/30 bg-emerald-400/[0.08] px-6 py-3.5 text-sm font-semibold text-emerald-100 transition hover:border-emerald-300/60 hover:bg-emerald-400/[0.14]"
               >
                 <Download className="h-4 w-4" />
                 Download Android APK
+              </a>
+              <a
+                href="/downloads/Krypton-iOS-0.1.0-project.zip"
+                download
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-violet-300/30 bg-violet-400/[0.08] px-6 py-3.5 text-sm font-semibold text-violet-100 transition hover:border-violet-300/60 hover:bg-violet-400/[0.14]"
+              >
+                <Download className="h-4 w-4" />
+                Download iOS app project (.zip)
               </a>
               <a
                 href="/downloads/krypton-browser-extension.zip"
@@ -340,12 +348,20 @@ export default function HomePage() {
               </>
             ) : null}
             <a
-              href="/downloads/Krypton-Android-0.1.0-test.apk?v=0.2.0"
+              href="/downloads/Krypton-Android-0.1.0-test.apk?v=0.2.1"
               download
               className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-300/30 bg-emerald-400/[0.08] px-5 py-3 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-400/[0.14]"
             >
               <Download className="h-4 w-4" />
               Download Android APK
+            </a>
+            <a
+              href="/downloads/Krypton-iOS-0.1.0-project.zip"
+              download
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-violet-300/30 bg-violet-400/[0.08] px-5 py-3 text-sm font-semibold text-violet-100 transition hover:bg-violet-400/[0.14]"
+            >
+              <Download className="h-4 w-4" />
+              Download iOS app project (.zip)
             </a>
             <a
               href="/downloads/krypton-browser-extension.zip"
@@ -358,7 +374,7 @@ export default function HomePage() {
           </div>
         </div>
         <div className="mx-auto mt-8 flex max-w-6xl flex-col justify-between gap-3 text-xs text-slate-500 sm:flex-row">
-          <span>Windows single-file installer · activation requires a valid company license</span>
+          <span>iOS download is an Xcode project; an Apple-signed build is required to install on iPhone.</span>
           <span>Download not starting? Check your browser&apos;s download settings.</span>
         </div>
         <p className="mx-auto mt-4 max-w-6xl text-xs leading-5 text-slate-500">
