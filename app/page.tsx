@@ -127,12 +127,11 @@ export default function HomePage() {
                 Download Android APK
               </a>
               <a
-                href="/downloads/Krypton-iOS-0.1.0-project.zip"
-                download
+                href="#ios-download"
                 className="inline-flex items-center justify-center gap-2 rounded-lg border border-violet-300/30 bg-violet-400/[0.08] px-6 py-3.5 text-sm font-semibold text-violet-100 transition hover:border-violet-300/60 hover:bg-violet-400/[0.14]"
               >
-                <Download className="h-4 w-4" />
-                Download iOS app project (.zip)
+                iPhone / iPad setup options
+                <ArrowRight className="h-4 w-4" />
               </a>
               <a
                 href="/downloads/krypton-browser-extension.zip"
@@ -356,14 +355,6 @@ export default function HomePage() {
               Download Android APK
             </a>
             <a
-              href="/downloads/Krypton-iOS-0.1.0-project.zip"
-              download
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-violet-300/30 bg-violet-400/[0.08] px-5 py-3 text-sm font-semibold text-violet-100 transition hover:bg-violet-400/[0.14]"
-            >
-              <Download className="h-4 w-4" />
-              Download iOS app project (.zip)
-            </a>
-            <a
               href="/downloads/krypton-browser-extension.zip"
               download
               className="inline-flex items-center justify-center gap-2 rounded-lg border border-sky-300/30 bg-sky-400/[0.08] px-5 py-3 text-sm font-semibold text-sky-100 transition hover:bg-sky-400/[0.14]"
@@ -373,8 +364,36 @@ export default function HomePage() {
             </a>
           </div>
         </div>
+        <div
+          id="ios-download"
+          className="mx-auto mt-8 flex max-w-6xl flex-col gap-6 rounded-2xl border border-violet-300/20 bg-[radial-gradient(ellipse_at_100%_0%,rgba(167,139,250,0.12),transparent_50%),#0b111c] p-6 sm:p-8 md:flex-row md:items-center md:justify-between"
+        >
+          <div className="max-w-2xl">
+            <p className="text-xs font-semibold uppercase tracking-wide text-violet-300">
+              iPhone and iPad · Keyboard prototype
+            </p>
+            <h3 className="mt-2 text-xl font-semibold text-white sm:text-2xl">
+              Try Krypton Keyboard on iOS
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-slate-300">
+              iPhone does not support installing this download directly. The ZIP contains the Xcode project source;
+              you need a Mac with Xcode and Apple signing to build and install it.
+            </p>
+            <p className="mt-2 text-sm leading-6 text-slate-400">
+              After building, add Krypton Keyboard in iPhone Settings → General → Keyboard → Keyboards.
+              The keyboard checks text entered through Krypton Keyboard only.
+            </p>
+          </div>
+          <a
+            href="/downloads/Krypton-iOS-0.1.0-project.zip"
+            download
+            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-violet-300 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-violet-200"
+          >
+            <Download className="h-4 w-4" />
+            Download iOS project (.zip)
+          </a>
+        </div>
         <div className="mx-auto mt-8 flex max-w-6xl flex-col justify-between gap-3 text-xs text-slate-500 sm:flex-row">
-          <span>iOS download is an Xcode project; an Apple-signed build is required to install on iPhone.</span>
           <span>Download not starting? Check your browser&apos;s download settings.</span>
         </div>
         <p className="mx-auto mt-4 max-w-6xl text-xs leading-5 text-slate-500">
