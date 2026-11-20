@@ -40,11 +40,13 @@ import {
   Calendar,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { createDashboardDemoData } from './demo-data';
 
 export default function CompanyDashboard() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [companyData, setCompanyData] = useState<any>(null);
+  const [demoMode, setDemoMode] = useState(false);
   const [employees, setEmployees] = useState<any[]>([]);
   const [pendingInvitations, setPendingInvitations] = useState<any[]>([]);
   const [devices, setDevices] = useState<any[]>([]);
@@ -137,6 +139,7 @@ export default function CompanyDashboard() {
   };
 
   const handleSaveDeviceSchedule = async () => {
+    if (preventDemoWrite()) return;
     if (!scheduleModalDevice) return;
     setScheduleLoading(true);
     setScheduleError(null);
@@ -202,6 +205,12 @@ export default function CompanyDashboard() {
   const [newRulePattern, setNewRulePattern] = useState('');
   const [newRuleRisk, setNewRuleRisk] = useState<'HIGH' | 'CRITICAL' | 'MEDIUM'>('HIGH');
 
+  const preventDemoWrite = () => {
+    if (!demoMode) return false;
+    window.alert('Demo mode is read-only. Exit demo mode to make changes to your workspace.');
+    return true;
+  };
+
   useEffect(() => {
     const token = localStorage.getItem('krypton_token');
     const userStr = localStorage.getItem('krypton_user');
@@ -227,6 +236,12 @@ export default function CompanyDashboard() {
 
   useEffect(() => {
     if (!showAiStats) return;
+    if (demoMode) {
+      setAiStats(createDashboardDemoData().aiStats);
+      setAiStatsLoading(false);
+      setAiStatsError(null);
+      return;
+    }
     const token = localStorage.getItem('krypton_token');
     if (!token) {
       setAiStatsError('Your session expired. Sign in again to view statistics.');
@@ -256,7 +271,7 @@ export default function CompanyDashboard() {
       });
 
     return () => controller.abort();
-  }, [showAiStats, aiStatsDays, aiStatsDepartment]);
+  }, [showAiStats, aiStatsDays, aiStatsDepartment, demoMode]);
 
   const fetchCompanyData = async (token: string) => {
     setLoading(true);
@@ -306,6 +321,51 @@ export default function CompanyDashboard() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadDemoData = () => {
+    const data = createDashboardDemoData();
+    setCompanyData(data.companyData);
+    setEmployees(data.employees);
+    setPendingInvitations(data.pendingInvitations);
+    setDevices(data.devices);
+    setPolicy(data.policy);
+    setEvents(data.events);
+    setUsbEvents(data.usbEvents);
+    setUsbMonitoredDevices(data.usbMonitoredDevices);
+    setAnalytics(data.analytics);
+    setAiSafety(data.aiSafety);
+    setAiStats(data.aiStats);
+    setAiStatsError(null);
+    setDemoMode(true);
+    setActiveTab('overview');
+    setSeverityFilter('');
+    setActionFilter('');
+    setSearchTerm('');
+    setTeamSearch('');
+    setSelectedDepartment('');
+    setSeatFilter('all');
+    setDeviceSearch('');
+    setUsbSearch('');
+    setUsbEventFilter('');
+  };
+
+  const exitDemoMode = () => {
+    setDemoMode(false);
+    setShowAiStats(false);
+    setCompanyData(null);
+    setEmployees([]);
+    setPendingInvitations([]);
+    setDevices([]);
+    setPolicy(null);
+    setEvents([]);
+    setUsbEvents([]);
+    setUsbMonitoredDevices([]);
+    setAnalytics(null);
+    setAiSafety(null);
+    setAiStats(null);
+    const token = localStorage.getItem('krypton_token');
+    if (token) void fetchCompanyData(token);
   };
 
   const handleCopyLicense = (key?: string) => {
@@ -457,6 +517,7 @@ export default function CompanyDashboard() {
   };
 
   const handleExecuteImport = async () => {
+    if (preventDemoWrite()) return;
     if (importPreviewRows.length === 0) return;
     const token = localStorage.getItem('krypton_token');
     if (!token) return;
@@ -514,6 +575,7 @@ export default function CompanyDashboard() {
   };
 
   const handleToggleSeat = async (userId: string, currentSeat: boolean) => {
+    if (preventDemoWrite()) return;
     if (!currentSeat) {
       const employee = employees.find((item) => item.userId === userId);
       if (!employee) return;
@@ -551,6 +613,7 @@ export default function CompanyDashboard() {
 
   const handleAssignSeatWithPassword = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (preventDemoWrite()) return;
     if (!seatAssignmentEmployee) return;
     if (seatAssignmentPassword.length < 12) {
       setSeatAssignmentError('Use a unique password with at least 12 characters.');
@@ -613,6 +676,7 @@ export default function CompanyDashboard() {
 
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (preventDemoWrite()) return;
     if (!editingEmployee) return;
     const token = localStorage.getItem('krypton_token');
     if (!token) return;
@@ -651,6 +715,7 @@ export default function CompanyDashboard() {
 
   const handleInviteEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (preventDemoWrite()) return;
     const token = localStorage.getItem('krypton_token');
     if (!token) return;
 
@@ -698,6 +763,7 @@ export default function CompanyDashboard() {
   };
 
   const handleToggleEmployeeActive = async (userId: string, currentActive: boolean) => {
+    if (preventDemoWrite()) return;
     const token = localStorage.getItem('krypton_token');
     if (!token) return;
 
@@ -717,6 +783,7 @@ export default function CompanyDashboard() {
   };
 
   const handleRemoveEmployee = async (userId: string) => {
+    if (preventDemoWrite()) return;
     if (!confirm('Remove this employee? Their sign-in will be disabled and paired devices revoked.')) {
       return;
     }
@@ -735,6 +802,7 @@ export default function CompanyDashboard() {
   };
 
   const handleRevokeDevice = async (deviceId: string) => {
+    if (preventDemoWrite()) return;
     if (!confirm('Revoke this device? The workstation will be barred from validating prompts.')) {
       return;
     }
@@ -753,6 +821,7 @@ export default function CompanyDashboard() {
   };
 
   const handleRevokeExtension = async (deviceId: string) => {
+    if (preventDemoWrite()) return;
     if (!confirm('Disable this browser extension? Only a company administrator can re-enable it.')) return;
     const token = localStorage.getItem('krypton_token');
     if (!token) return;
@@ -778,6 +847,7 @@ export default function CompanyDashboard() {
   };
 
   const handleReauthorizeExtension = async (deviceId: string) => {
+    if (preventDemoWrite()) return;
     if (!confirm('Allow this browser extension to register again? The browser user must activate it again.')) return;
     const token = localStorage.getItem('krypton_token');
     if (!token) return;
@@ -803,6 +873,7 @@ export default function CompanyDashboard() {
   };
 
   const handleTogglePolicy = async (field: string, currentVal: boolean) => {
+    if (preventDemoWrite()) return;
     const token = localStorage.getItem('krypton_token');
     if (!token || !policy) return;
 
@@ -828,6 +899,7 @@ export default function CompanyDashboard() {
 
   const handleAddCustomRule = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (preventDemoWrite()) return;
     const token = localStorage.getItem('krypton_token');
     if (!token || !policy) return;
 
@@ -1022,6 +1094,17 @@ export default function CompanyDashboard() {
         </div>
 
         <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+          <button
+            type="button"
+            onClick={demoMode ? exitDemoMode : loadDemoData}
+            className={`rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+              demoMode
+                ? 'border-amber-400/30 bg-amber-400/10 text-amber-200 hover:bg-amber-400/15'
+                : 'border-sky-300/20 bg-sky-300/10 text-sky-100 hover:border-sky-200/40 hover:bg-sky-300/15'
+            }`}
+          >
+            {demoMode ? 'Exit demo' : 'Load demo data'}
+          </button>
           <Link
             href="/download"
             className="hidden items-center gap-2 rounded-lg border border-sky-300/20 bg-sky-300/10 px-3 py-2 text-xs font-medium text-sky-100 transition hover:border-sky-200/40 hover:bg-sky-300/15 sm:flex"
@@ -1045,6 +1128,13 @@ export default function CompanyDashboard() {
           </button>
         </div>
       </header>
+
+      {demoMode && (
+        <div role="status" className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-400/20 bg-amber-400/[0.07] px-4 py-2.5 text-xs text-amber-100 sm:px-6">
+          <span><strong>Demo mode</strong> · Sample workspace data only. Nothing is saved to your company account.</span>
+          <span className="text-amber-200/70">Read-only actions</span>
+        </div>
+      )}
 
       {/* Main Layout */}
       <div className="flex-1 flex flex-col md:flex-row">
