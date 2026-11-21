@@ -1,4 +1,5 @@
 import { clipboard, Notification } from 'electron';
+import { spawn, ChildProcess } from 'node:child_process';
 import { PromptSecurityEngine } from '../engine/scanner';
 import { PromptScanResult, RiskLevel } from '@krypton/shared';
 
@@ -96,6 +97,8 @@ export class WindowsProtectionAgent {
   private isScheduleActive?: () => boolean;
   private clipboardPollTimer: NodeJS.Timeout | null = null;
   private lastClipboardText = '';
+  private inputMonitorProcess: ChildProcess | null = null;
+  private lastInspectedInput = '';
 
   constructor(
     scanner: PromptSecurityEngine,
@@ -111,6 +114,16 @@ export class WindowsProtectionAgent {
     this.scanner = scanner;
   }
 
+  public startAllMonitors(): void {
+    this.startClipboardMonitor();
+    this.startInputMonitor();
+  }
+
+  public stopAllMonitors(): void {
+    this.stopClipboardMonitor();
+    this.stopInputMonitor();
+  }
+
   public startClipboardMonitor(): void {
     if (this.clipboardPollTimer) return;
     try {
@@ -119,7 +132,7 @@ export class WindowsProtectionAgent {
       this.lastClipboardText = '';
     }
 
-    // Monitor clipboard changes every 800ms to inspect text pasted into AI apps or browsers
+    // Monitor clipboard changes every 600ms to inspect text pasted into AI apps or browsers
     this.clipboardPollTimer = setInterval(() => {
       if (!this.active) return;
       try {
@@ -131,7 +144,7 @@ export class WindowsProtectionAgent {
       } catch {
         // Ignore clipboard lock errors in Windows
       }
-    }, 800);
+    }, 600);
   }
 
   public stopClipboardMonitor(): void {
@@ -139,6 +152,201 @@ export class WindowsProtectionAgent {
       clearInterval(this.clipboardPollTimer);
       this.clipboardPollTimer = null;
     }
+  }
+
+  public startInputMonitor(): void {
+    if (this.inputMonitorProcess) return;
+    if (process.platform !== 'win32') {
+      // Non-Windows platforms (macOS/Linux) run in safe simulated/clipboard mode
+      return;
+    }
+
+    try {
+      // PowerShell script using Windows UI Automation and User32 GetForegroundWindow
+      // to observe text entered in Chrome/Edge/Brave/desktop apps on ChatGPT, Gemini, Claude, etc.
+      const psScript = `
+Add-Type -AssemblyName UIAutomationClient -ErrorAction SilentlyContinue
+Add-Type -AssemblyName UIAutomationTypes -ErrorAction SilentlyContinue
+
+$sig = @"
+[DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+[DllImport("user32.dll", SetLastError=true, CharSet=CharSet.Auto)] public static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder lpString, int nMaxCount);
+"@
+$Win32 = Add-Type -MemberDefinition $sig -Name "KryptonWin32" -Namespace "Krypton" -PassThru -ErrorAction SilentlyContinue
+
+$keywords = @("chatgpt", "gemini", "claude", "copilot", "perplexity", "openai", "anthropic")
+$sb = New-Object System.Text.StringBuilder 512
+$lastVal = ""
+
+while ($true) {
+    try {
+        $hwnd = [Krypton.KryptonWin32]::GetForegroundWindow()
+        if ($hwnd -ne [IntPtr]::Zero) {
+            $len = [Krypton.KryptonWin32]::GetWindowText($hwnd, $sb, 512)
+            if ($len -gt 0) {
+                $title = $sb.ToString().ToLower()
+                $target = ""
+                foreach ($kw in $keywords) {
+                    if ($title.Contains($kw)) {
+                        $target = $kw
+                        break
+                    }
+                }
+                if ($target -ne "") {
+                    $focused = [System.Windows.Automation.AutomationElement]::FocusedElement
+                    if ($focused -ne $null) {
+                        $txt = ""
+                        try {
+                            $vp = $focused.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
+                            if ($vp -ne $null) { $txt = $vp.Current.Value }
+                        } catch {}
+                        if ([string]::IsNullOrEmpty($txt)) {
+                            try {
+                                $tp = $focused.GetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern)
+                                if ($tp -ne $null) { $txt = $tp.DocumentRange.GetText(-1) }
+                            } catch {}
+                        }
+                        if (-not [string]::IsNullOrEmpty($txt) -and $txt.Length -ge 3 -and $txt -ne $lastVal) {
+                            $lastVal = $txt
+                            $payload = @{ type = "TYPED_INPUT"; target = $target; text = $txt } | ConvertTo-Json -Compress
+                            [Console]::WriteLine($payload)
+                        }
+                    }
+                }
+            }
+        }
+    } catch {}
+    Start-Sleep -Milliseconds 450
+}
+`;
+
+      this.inputMonitorProcess = spawn('powershell.exe', [
+        '-NoProfile',
+        '-NonInteractive',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-Command',
+        psScript,
+      ], {
+        windowsHide: true,
+        stdio: ['pipe', 'pipe', 'ignore'],
+      });
+
+      let buffer = '';
+      this.inputMonitorProcess.stdout?.on('data', (chunk: Buffer) => {
+        buffer += chunk.toString('utf8');
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          try {
+            const data = JSON.parse(trimmed);
+            if (data.type === 'TYPED_INPUT' && typeof data.text === 'string') {
+              this.inspectTypedPrompt(data.text, data.target || 'ChatGPT / AI Web');
+            }
+          } catch {
+            // Non-JSON stdout ignored
+          }
+        }
+      });
+
+      this.inputMonitorProcess.on('error', (err) => {
+        console.warn('[WindowsProtectionAgent] Input monitor error:', err.message);
+        this.inputMonitorProcess = null;
+      });
+
+      this.inputMonitorProcess.on('exit', () => {
+        this.inputMonitorProcess = null;
+      });
+    } catch (err: any) {
+      console.warn('[WindowsProtectionAgent] Could not start input monitor:', err.message);
+    }
+  }
+
+  public stopInputMonitor(): void {
+    if (this.inputMonitorProcess) {
+      try {
+        this.inputMonitorProcess.kill();
+      } catch {
+        // Ignore
+      }
+      this.inputMonitorProcess = null;
+    }
+  }
+
+  public inspectTypedPrompt(text: string, targetName = 'ChatGPT'): { blocked: boolean; result: PromptScanResult } {
+    if (!this.active || !text || text.trim().length === 0 || (this.isScheduleActive && !this.isScheduleActive())) {
+      return {
+        blocked: false,
+        result: {
+          hasRisk: false,
+          highestRisk: 'LOW',
+          action: 'allow',
+          matches: [],
+          redactedPrompt: text,
+          explanation: '',
+        },
+      };
+    }
+
+    if (text === this.lastInspectedInput) {
+      return {
+        blocked: false,
+        result: {
+          hasRisk: false,
+          highestRisk: 'LOW',
+          action: 'allow',
+          matches: [],
+          redactedPrompt: text,
+          explanation: 'Duplicate input suppressed',
+        },
+      };
+    }
+    this.lastInspectedInput = text;
+
+    this.scannedCount++;
+    const result = this.scanner.scan(text);
+
+    if (result.hasRisk && result.action === 'block') {
+      this.blockedCount++;
+      const topMatch = result.matches[0];
+      const eventRecord: SecurityEventRecord = {
+        id: `evt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        timestamp: new Date().toISOString(),
+        targetName: `Active Browser: ${targetName}`,
+        actionTaken: 'block',
+        riskLevel: result.highestRisk,
+        ruleCode: topMatch?.ruleCode || 'SECURITY_POLICY',
+        ruleName: topMatch?.ruleName || 'Sensitive Data Blocked',
+        summary: `Blocked ${topMatch?.ruleName || 'confidential data'} in ${targetName} prompt (${result.highestRisk} risk)`,
+      };
+
+      this.addRecentEvent(eventRecord);
+
+      this.notifyWindows(
+        `Krypton DLP: Sensitive Prompt Blocked on ${targetName}`,
+        `Detected: ${topMatch?.ruleName || 'Confidential Data'}. Content prevented from leaking to AI model.`,
+      );
+
+      if (this.onReportEvent) {
+        this.onReportEvent({
+          targetApp: targetName,
+          riskLevel: result.highestRisk,
+          ruleCode: topMatch?.ruleCode || 'DLP_TYPED_BLOCK',
+          ruleName: topMatch?.ruleName || 'Sensitive Data Blocked',
+          actionTaken: 'block',
+          redactedPreview: result.redactedPrompt?.slice(0, 500),
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      return { blocked: true, result };
+    }
+
+    this.allowedCount++;
+    return { blocked: false, result };
   }
 
   public inspectClipboard(text: string): { blocked: boolean; result: PromptScanResult } {

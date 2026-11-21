@@ -2,25 +2,18 @@ import React, { useEffect, useState } from 'react';
 import {
   ShieldCheck,
   ShieldAlert,
-  KeyRound,
-  Mail,
-  Lock,
   Globe,
   Monitor,
   CheckCircle2,
   XCircle,
-  AlertTriangle,
-  LogOut,
   RefreshCw,
   ExternalLink,
-  Eye,
-  EyeOff,
   Sparkles,
   Terminal,
   Activity,
-  HardDrive,
-  Copy,
-  Check,
+  Keyboard,
+  ClipboardCheck,
+  Flame,
 } from 'lucide-react';
 
 interface StoredState {
@@ -74,7 +67,7 @@ const DEFAULT_TARGETS: TargetItem[] = [
     id: 'chatgpt',
     name: 'ChatGPT',
     domain: 'chatgpt.com',
-    desktopProcess: 'ChatGPT.exe',
+    desktopProcess: 'ChatGPT.exe / Chrome',
     type: 'both',
     enabled: true,
     color: 'from-emerald-500 to-teal-600',
@@ -84,7 +77,7 @@ const DEFAULT_TARGETS: TargetItem[] = [
     id: 'gemini',
     name: 'Google Gemini',
     domain: 'gemini.google.com',
-    desktopProcess: 'Web browser',
+    desktopProcess: 'Chrome / Edge / Web',
     type: 'web',
     enabled: true,
     color: 'from-blue-500 to-indigo-600',
@@ -94,7 +87,7 @@ const DEFAULT_TARGETS: TargetItem[] = [
     id: 'claude',
     name: 'Claude AI',
     domain: 'claude.ai',
-    desktopProcess: 'Claude.exe',
+    desktopProcess: 'Claude.exe / Chrome',
     type: 'both',
     enabled: true,
     color: 'from-amber-500 to-orange-600',
@@ -104,7 +97,7 @@ const DEFAULT_TARGETS: TargetItem[] = [
     id: 'copilot',
     name: 'Microsoft Copilot',
     domain: 'copilot.microsoft.com',
-    desktopProcess: 'Windows Copilot',
+    desktopProcess: 'Windows Copilot / Edge',
     type: 'both',
     enabled: true,
     color: 'from-sky-500 to-cyan-600',
@@ -114,7 +107,7 @@ const DEFAULT_TARGETS: TargetItem[] = [
     id: 'perplexity',
     name: 'Perplexity AI',
     domain: 'perplexity.ai',
-    desktopProcess: 'Perplexity.exe',
+    desktopProcess: 'Perplexity.exe / Web',
     type: 'both',
     enabled: true,
     color: 'from-violet-500 to-purple-600',
@@ -125,18 +118,9 @@ const DEFAULT_TARGETS: TargetItem[] = [
 export default function App() {
   const bridge = (window as any).kryptonDesktop;
 
-  // Activation & Auth
-  const [isActivated, setIsActivated] = useState(false);
+  // Protection state (Always active out of the box - no activation code needed)
   const [isInitializing, setIsInitializing] = useState(true);
   const [storedState, setStoredState] = useState<StoredState | null>(null);
-
-  // Form Inputs
-  const [licenseKeyInput, setLicenseKeyInput] = useState('');
-  const [emailInput, setEmailInput] = useState('');
-  const [passwordInput, setPasswordInput] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [authLoading, setAuthLoading] = useState(false);
-  const [authError, setAuthError] = useState<string | null>(null);
 
   // Protection & Targets
   const [protectionActive, setProtectionActive] = useState(true);
@@ -161,17 +145,14 @@ export default function App() {
         }
 
         const [state, devInfo] = await Promise.all([
-          bridge.getStoredState(),
+          bridge.getStoredState().catch(() => null),
           bridge.getDeviceInfo().catch(() => ({})),
         ]);
 
         if (devInfo) setDeviceInfo(devInfo);
+        if (state) setStoredState(state);
 
-        if (state && state.token) {
-          setStoredState(state);
-          setIsActivated(true);
-          refreshSummary();
-        }
+        await refreshSummary();
       } catch (err) {
         console.warn('Initialization error:', err);
       } finally {
@@ -184,14 +165,14 @@ export default function App() {
 
   // Poll summary for real-time stats
   useEffect(() => {
-    if (!isActivated || !bridge?.getWindowsProtectionSummary) return;
+    if (!bridge?.getWindowsProtectionSummary) return;
 
     const interval = setInterval(() => {
       refreshSummary();
-    }, 3000);
+    }, 2500);
 
     return () => clearInterval(interval);
-  }, [isActivated]);
+  }, []);
 
   const refreshSummary = async () => {
     if (!bridge?.getWindowsProtectionSummary) return;
@@ -207,46 +188,6 @@ export default function App() {
     } catch (err) {
       console.warn('Could not refresh summary:', err);
     }
-  };
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAuthError(null);
-    setAuthLoading(true);
-
-    try {
-      if (!bridge?.activate) {
-        throw new Error('Desktop bridge not available.');
-      }
-
-      const res = await bridge.activate({
-        licenseKey: licenseKeyInput,
-        email: emailInput,
-        password: passwordInput,
-      });
-
-      if (!res.success) {
-        setAuthError(res.error || 'Activation failed. Please check credentials.');
-        return;
-      }
-
-      const state = await bridge.getStoredState();
-      setStoredState(state);
-      setIsActivated(true);
-      await refreshSummary();
-    } catch (err: any) {
-      setAuthError(err.message || 'Connection error.');
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
-  const handleLogout = async () => {
-    if (!bridge?.logout) return;
-    await bridge.logout();
-    setIsActivated(false);
-    setStoredState(null);
-    setPasswordInput('');
   };
 
   const handleToggleProtection = async () => {
@@ -271,9 +212,14 @@ export default function App() {
     if (!testInput.trim()) return;
     setIsTesting(true);
     try {
-      if (bridge?.scanPrompt) {
+      if (bridge?.inspectTypedPrompt) {
+        const res = await bridge.inspectTypedPrompt(testInput, 'Live DLP Tester');
+        setTestResult(res?.result || res);
+        await refreshSummary();
+      } else if (bridge?.scanPrompt) {
         const res = await bridge.scanPrompt(testInput);
         setTestResult(res);
+        await refreshSummary();
       }
     } catch (err) {
       console.error(err);
@@ -292,169 +238,45 @@ export default function App() {
     return (
       <div className="flex h-screen items-center justify-center bg-[#070b14] text-slate-300">
         <RefreshCw className="h-6 w-6 animate-spin text-sky-400" />
-        <span className="ml-3 text-sm font-medium">Initializing Krypton Windows Agent…</span>
+        <span className="ml-3 text-sm font-medium">Starting Krypton DLP Agent…</span>
       </div>
     );
   }
 
-  // =========================================================================
-  // VIEW 1: AUTH / LICENSE ACTIVATION (Clean, Focused, Modern)
-  // =========================================================================
-  if (!isActivated) {
-    return (
-      <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#070b14] px-4 font-sans text-slate-100 select-none">
-        {/* Background glow effects */}
-        <div className="pointer-events-none absolute -top-40 left-1/2 h-[450px] w-[600px] -translate-x-1/2 rounded-full bg-sky-500/10 blur-[130px]" />
-        <div className="pointer-events-none absolute -bottom-40 right-10 h-[350px] w-[450px] rounded-full bg-indigo-500/10 blur-[120px]" />
-
-        <div className="relative w-full max-w-md rounded-2xl border border-slate-800/90 bg-[#0c1322]/95 p-8 shadow-2xl shadow-black/80 backdrop-blur-xl">
-          {/* Logo & Headline */}
-          <div className="text-center">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-tr from-sky-500 via-indigo-500 to-indigo-600 shadow-lg shadow-sky-500/25">
-              <ShieldCheck className="h-8 w-8 text-white" />
-            </div>
-            <h1 className="mt-4 text-2xl font-bold tracking-tight text-white">Krypton Endpoint</h1>
-            <p className="mt-1 text-xs text-slate-400">
-              Zero-Extension AI DLP for Windows (Browsers & Desktop Apps)
-            </p>
-          </div>
-
-          {authError && (
-            <div className="mt-5 flex items-start gap-2.5 rounded-xl border border-rose-500/20 bg-rose-500/10 p-3.5 text-xs text-rose-300">
-              <AlertTriangle className="h-4 w-4 shrink-0 text-rose-400 mt-0.5" />
-              <span>{authError}</span>
-            </div>
-          )}
-
-          {/* Form */}
-          <form onSubmit={handleLogin} className="mt-6 space-y-4">
-            <div>
-              <label className="text-[11px] font-semibold tracking-wider text-slate-400 uppercase">
-                Company License Key
-              </label>
-              <div className="relative mt-1.5">
-                <KeyRound className="absolute top-3 left-3 h-4 w-4 text-slate-500" />
-                <input
-                  type="text"
-                  required
-                  placeholder="KRP-XXXX-XXXX-XXXX"
-                  value={licenseKeyInput}
-                  onChange={(e) => setLicenseKeyInput(e.target.value)}
-                  className="w-full rounded-xl border border-slate-800 bg-slate-950/70 py-2.5 pr-4 pl-10 text-sm font-mono text-white placeholder-slate-600 transition focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="text-[11px] font-semibold tracking-wider text-slate-400 uppercase">
-                Employee Email
-              </label>
-              <div className="relative mt-1.5">
-                <Mail className="absolute top-3 left-3 h-4 w-4 text-slate-500" />
-                <input
-                  type="email"
-                  required
-                  placeholder="employee@company.com"
-                  value={emailInput}
-                  onChange={(e) => setEmailInput(e.target.value)}
-                  className="w-full rounded-xl border border-slate-800 bg-slate-950/70 py-2.5 pr-4 pl-10 text-sm text-white placeholder-slate-600 transition focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="text-[11px] font-semibold tracking-wider text-slate-400 uppercase">
-                Password
-              </label>
-              <div className="relative mt-1.5">
-                <Lock className="absolute top-3 left-3 h-4 w-4 text-slate-500" />
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  placeholder="••••••••••••"
-                  value={passwordInput}
-                  onChange={(e) => setPasswordInput(e.target.value)}
-                  className="w-full rounded-xl border border-slate-800 bg-slate-950/70 py-2.5 pr-10 pl-10 text-sm text-white placeholder-slate-600 transition focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute top-2.5 right-3 text-slate-500 hover:text-slate-300"
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={authLoading}
-              className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 via-sky-600 to-indigo-600 py-3 text-sm font-semibold text-white shadow-lg shadow-sky-500/25 transition hover:brightness-110 active:scale-[0.99] disabled:opacity-50"
-            >
-              {authLoading ? (
-                <>
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                  Authenticating Device…
-                </>
-              ) : (
-                'Activate & Enable DLP'
-              )}
-            </button>
-          </form>
-
-          {/* Windows Features Note */}
-          <div className="mt-6 rounded-xl border border-slate-800/80 bg-slate-950/50 p-3 text-center">
-            <p className="text-[11px] text-slate-400">
-              ⚡ <strong className="text-slate-200">Windows Native Protection:</strong> Works automatically on Chrome, Edge, Firefox, Brave, and desktop AI clients without manual extension install.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // =========================================================================
-  // VIEW 2: HOME DASHBOARD (Clean, Modern Security Hub)
-  // =========================================================================
   return (
     <div className="min-h-screen bg-[#070b14] font-sans text-slate-100 select-none">
       {/* Top Navigation Bar */}
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-800/80 bg-[#090e1c]/90 px-6 py-3.5 backdrop-blur-md">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 shadow-md shadow-sky-500/20">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-sky-500 via-indigo-500 to-teal-400 shadow-md shadow-sky-500/20">
             <ShieldCheck className="h-5 w-5 text-white" />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-sm font-bold tracking-tight text-white">KRYPTON ENDPOINT</h1>
-              <span className="rounded-full bg-sky-500/10 px-2 py-0.5 text-[10px] font-semibold text-sky-400 border border-sky-500/20">
-                WINDOWS
+              <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-400 border border-emerald-500/20">
+                ACTIVE
               </span>
             </div>
             <p className="text-[10px] text-slate-400">
-              Device: {deviceInfo.deviceId || 'WIN-ENDPOINT'} · Agent v{deviceInfo.appVersion || '1.0.1'}
+              Endpoint: {deviceInfo.deviceId || 'LOCAL-PC'} · Native AI DLP
             </p>
           </div>
         </div>
 
-        {/* User Badge & Logout */}
-        <div className="flex items-center gap-4">
-          <div className="text-right">
-            <p className="text-xs font-medium text-white">{storedState?.user?.email || 'Protected Employee'}</p>
+        {/* Protection Mode Pill */}
+        <div className="flex items-center gap-3">
+          <div className="text-right hidden sm:block">
+            <p className="text-xs font-medium text-white">Direct Browser & App Protection</p>
             <span className="inline-flex items-center gap-1.5 text-[10px] text-emerald-400 font-semibold">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              License Verified
+              Zero Extension Needed
             </span>
           </div>
-
-          <button
-            onClick={handleLogout}
-            title="Log out of this device"
-            className="flex items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-400 transition hover:border-rose-500/40 hover:bg-rose-500/10 hover:text-rose-300"
-          >
-            <LogOut className="h-3.5 w-3.5" />
-            <span>Logout</span>
-          </button>
+          <div className="rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-300 flex items-center gap-1.5">
+            <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+            <span>Ready</span>
+          </div>
         </div>
       </header>
 
@@ -492,8 +314,8 @@ export default function App() {
                 </div>
                 <p className="mt-1 text-xs text-slate-400 max-w-xl">
                   {protectionActive
-                    ? 'Active across all Windows browsers (Chrome, Edge, Firefox, Brave) and AI desktop apps. Scanning for secrets, API keys, and sensitive data without requiring browser extensions.'
-                    : 'Prompt interception is paused. Prompts to AI sites and desktop apps are currently unmonitored.'}
+                    ? 'Automatically protects your normal Google Chrome, Microsoft Edge, Brave, and desktop AI clients. Open ChatGPT or any AI tool yourself—typed prompts and copy-paste are scanned automatically with zero extensions or activation codes needed.'
+                    : 'Interception is paused. Outgoing prompts and inputs are currently unmonitored.'}
                 </p>
               </div>
             </div>
@@ -516,6 +338,45 @@ export default function App() {
               <span className="text-xs font-medium text-slate-300">
                 {protectionActive ? 'Enabled' : 'Disabled'}
               </span>
+            </div>
+          </div>
+        </div>
+
+        {/* 3 Pillars of Zero-Setup Protection */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="rounded-2xl border border-slate-800/90 bg-[#0a0f1d] p-4 flex items-start gap-3.5">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-500/15 border border-sky-400/25 text-sky-400">
+              <Globe className="h-5 w-5" />
+            </div>
+            <div>
+              <h4 className="text-xs font-bold text-white">Normal Browser Guard</h4>
+              <p className="mt-1 text-[11px] text-slate-400 leading-relaxed">
+                Open Chrome or Edge normally on your PC. No special browser profiles or &quot;Open Protected&quot; buttons needed.
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-800/90 bg-[#0a0f1d] p-4 flex items-start gap-3.5">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 border border-emerald-400/25 text-emerald-400">
+              <Keyboard className="h-5 w-5" />
+            </div>
+            <div>
+              <h4 className="text-xs font-bold text-white">Live Typing & Input DLP</h4>
+              <p className="mt-1 text-[11px] text-slate-400 leading-relaxed">
+                Scans text as you type directly into ChatGPT, Gemini, or Claude. Detects API keys & secrets before submission.
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-800/90 bg-[#0a0f1d] p-4 flex items-start gap-3.5">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-500/15 border border-indigo-400/25 text-indigo-400">
+              <ClipboardCheck className="h-5 w-5" />
+            </div>
+            <div>
+              <h4 className="text-xs font-bold text-white">Instant Clipboard Guard</h4>
+              <p className="mt-1 text-[11px] text-slate-400 leading-relaxed">
+                Automatically redacts sensitive secrets if you copy or paste text destined for AI chatbots.
+              </p>
             </div>
           </div>
         </div>
@@ -555,7 +416,7 @@ export default function App() {
               <Monitor className="h-4 w-4 text-indigo-400" />
             </div>
             <p className="mt-2 text-2xl font-bold text-white">{targets.filter((t) => t.enabled).length}</p>
-            <p className="mt-1 text-[11px] text-slate-500">5 AI sites + desktop apps</p>
+            <p className="mt-1 text-[11px] text-slate-500">AI sites + desktop apps</p>
           </div>
         </div>
 
@@ -563,13 +424,13 @@ export default function App() {
         <section className="space-y-3">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-base font-bold text-white">Protected AI Platforms & Desktop Apps</h3>
+              <h3 className="text-base font-bold text-white">Monitored AI Platforms</h3>
               <p className="text-xs text-slate-400">
-                Automatic protection on any browser and official Windows desktop clients.
+                Guarding prompts on any browser you open and native desktop applications.
               </p>
             </div>
             <span className="rounded-full bg-slate-900 border border-slate-800 px-3 py-1 text-[11px] text-sky-400">
-              No Extension Needed
+              Zero Configuration
             </span>
           </div>
 
@@ -610,7 +471,7 @@ export default function App() {
 
                 <div className="mt-3 flex items-center justify-between border-t border-slate-800/60 pt-2.5 text-[11px]">
                   <span className="text-slate-400">
-                    App: <strong className="text-slate-300 font-mono">{target.desktopProcess}</strong>
+                    Scope: <strong className="text-slate-300 font-mono">{target.desktopProcess}</strong>
                   </span>
                   <a
                     href={target.url}
@@ -632,7 +493,7 @@ export default function App() {
             <div>
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
                 <Terminal className="h-4 w-4 text-sky-400" />
-                Live Prompt Security Tester
+                Live Prompt DLP Tester
               </h3>
               <p className="text-xs text-slate-400">
                 Test how Krypton scans and blocks sensitive secrets or allows safe prompts in real-time.
@@ -656,7 +517,7 @@ export default function App() {
               rows={3}
               value={testInput}
               onChange={(e) => setTestInput(e.target.value)}
-              placeholder="Type or paste any prompt here to see instant Krypton DLP scanner response..."
+              placeholder="Type or paste any prompt here to test instant Krypton DLP scanner response..."
               className="w-full rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-xs font-mono text-white placeholder-slate-600 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
             />
 
@@ -701,20 +562,23 @@ export default function App() {
           </div>
         </section>
 
-        {/* Recent Security Incidents / Activity */}
+        {/* Recent Real-Time Activity Log */}
         <section className="rounded-2xl border border-slate-800/80 bg-[#0a0f1d] p-5 sm:p-6 space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-white">Recent Real-Time Activity</h3>
-            <span className="text-[11px] text-slate-500">Live endpoint feed</span>
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <Flame className="h-4 w-4 text-amber-400" />
+              Recent Endpoint DLP Activity
+            </h3>
+            <span className="text-[11px] text-slate-500">Live feed from browsers & clipboard</span>
           </div>
 
           {recentEvents.length === 0 ? (
             <div className="rounded-xl border border-dashed border-slate-800 p-6 text-center text-xs text-slate-500">
-              No threats detected yet. Krypton is actively guarding clipboard & inputs in the background.
+              No threats detected yet. Krypton is actively guarding Chrome, Edge, and clipboard inputs in the background.
             </div>
           ) : (
             <div className="space-y-2">
-              {recentEvents.slice(0, 5).map((evt) => (
+              {recentEvents.slice(0, 6).map((evt) => (
                 <div
                   key={evt.id}
                   className="flex items-center justify-between rounded-xl border border-slate-800/60 bg-slate-950/40 p-3 text-xs"

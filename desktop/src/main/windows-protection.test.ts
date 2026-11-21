@@ -63,6 +63,30 @@ describe('WindowsProtectionAgent', () => {
     expect(summary.recentEvents[0].actionTaken).toBe('block');
   });
 
+  it('scans and blocks sensitive typed prompts from active Chrome/Edge on ChatGPT', () => {
+    const safeTyped = 'How do I center a div in Tailwind CSS?';
+    const res1 = agent.inspectTypedPrompt(safeTyped, 'ChatGPT');
+    expect(res1.blocked).toBe(false);
+    expect(res1.result.action).toBe('allow');
+
+    const sensitiveTyped = 'my secret key sk-proj-1234567890abcdef1234567890abcdef1234567890abcdef';
+    const res2 = agent.inspectTypedPrompt(sensitiveTyped, 'ChatGPT');
+    expect(res2.blocked).toBe(true);
+    expect(res2.result.action).toBe('block');
+
+    const summary = agent.getSummary();
+    expect(summary.stats.blockedCount).toBe(1);
+    expect(summary.stats.allowedCount).toBe(1);
+    expect(summary.recentEvents[0].targetName).toContain('ChatGPT');
+    expect(summary.recentEvents[0].actionTaken).toBe('block');
+  });
+
+  it('handles startAllMonitors and stopAllMonitors lifecycle cleanly', () => {
+    agent.startAllMonitors();
+    agent.stopAllMonitors();
+    expect(agent.isActive()).toBe(true);
+  });
+
   it('toggles target status and master protection', () => {
     agent.setTargetEnabled('gemini', false);
     const summary = agent.getSummary();

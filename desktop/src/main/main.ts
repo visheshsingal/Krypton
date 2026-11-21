@@ -53,10 +53,9 @@ if (cachedPolicy) {
   securityEngine.updatePolicy(cachedPolicy);
 }
 
-if (store.get('token')) {
-  windowsAgent.startClipboardMonitor();
-  void networkInterceptor.start();
-}
+// Start real-time zero-friction protection on launch
+windowsAgent.startAllMonitors();
+void networkInterceptor.start();
 
 let mainWindow: BrowserWindow | null = null;
 const managedBrowserSessions = new Map<ManagedBrowserKind, ManagedBrowserSession>();
@@ -332,6 +331,7 @@ app.on('before-quit', (event) => {
   if (shuttingDown) return;
   event.preventDefault();
   shuttingDown = true;
+  windowsAgent.stopAllMonitors();
   void Promise.all([
     closeManagedBrowserSessions(),
     usbDlpMonitor.stop(),
@@ -571,6 +571,10 @@ function setupIpcHandlers() {
     if (typeof text !== 'string') return { blocked: false };
     return windowsAgent.inspectClipboard(text);
   });
+  ipcMain.handle('desktop:inspect-typed-prompt', (_event, text: unknown, target: unknown) => {
+    if (typeof text !== 'string') return { blocked: false };
+    return windowsAgent.inspectTypedPrompt(text, typeof target === 'string' ? target : 'ChatGPT');
+  });
   ipcMain.handle('desktop:get-usb-monitor-status', () => usbDlpMonitor.getStatus());
   ipcMain.handle('desktop:set-usb-monitoring', async (_event, enabled: unknown) => {
     if (typeof enabled !== 'boolean') return { success: false, error: 'Monitoring choice must be enabled or disabled.' };
@@ -787,7 +791,7 @@ function setupIpcHandlers() {
 
   // Logout
   ipcMain.handle('desktop:logout', async () => {
-    windowsAgent.stopClipboardMonitor();
+    windowsAgent.stopAllMonitors();
     await networkInterceptor.stop();
     const token = store.get('token');
     const deviceId = store.get('deviceId');

@@ -47,6 +47,7 @@ export interface KryptonDesktopBridge {
   toggleWindowsProtection: (enabled: boolean) => Promise<{ success: boolean; active: boolean }>;
   toggleWindowsTarget: (targetId: string, enabled: boolean) => Promise<{ success: boolean }>;
   inspectText: (text: string) => Promise<any>;
+  inspectTypedPrompt: (text: string, target?: string) => Promise<any>;
 }
 
 const bridge: KryptonDesktopBridge = {
@@ -73,6 +74,7 @@ const bridge: KryptonDesktopBridge = {
   toggleWindowsProtection: (enabled) => ipcRenderer.invoke('desktop:toggle-windows-protection', enabled),
   toggleWindowsTarget: (targetId, enabled) => ipcRenderer.invoke('desktop:toggle-windows-target', targetId, enabled),
   inspectText: (text) => ipcRenderer.invoke('desktop:inspect-text', text),
+  inspectTypedPrompt: (text, target) => ipcRenderer.invoke('desktop:inspect-typed-prompt', text, target),
 };
 
 contextBridge.exposeInMainWorld('kryptonDesktop', bridge);
