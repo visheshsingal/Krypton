@@ -24,6 +24,12 @@ export default function HomePage() {
   const windowsDownload = {
     available: windowsRelease.available,
     downloadUrl: windowsRelease.installerDownloadUrl || undefined,
+    version: windowsRelease.version,
+  };
+  const windowsVersion = windowsRelease.version;
+    available: windowsRelease.available,
+    downloadUrl: windowsRelease.installerDownloadUrl || undefined,
+    version: windowsRelease.version,
   };
   const [macDownloads, setMacDownloads] = useState<{
     available: boolean;
@@ -84,6 +90,18 @@ export default function HomePage() {
             </p>
             <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row sm:flex-wrap">
               {showWindowsDownload ? (
+                <>
+                  <a
+                    href={windowsDownload.downloadUrl}
+                    download
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-400 px-6 py-3.5 text-sm font-semibold text-slate-950 shadow-[0_0_32px_rgba(56,189,248,0.2)] transition hover:bg-sky-300"
+                  >
+                    <Download className="h-4 w-4" />
+                    Download Windows installer (.exe)
+                  </a>
+                  <span className="ml-2 text-sm text-slate-400">v{windowsDownload.version}</span>
+                </>
+              ) : (
                 <a
                   href={windowsDownload.downloadUrl}
                   download
@@ -312,6 +330,18 @@ export default function HomePage() {
           </div>
           <div className="flex w-full shrink-0 flex-col gap-3 sm:w-auto sm:flex-row">
             {showWindowsDownload ? (
+                <>
+                  <a
+                    href={windowsDownload.downloadUrl}
+                    download
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-400 px-6 py-3.5 text-sm font-semibold text-slate-950 shadow-[0_0_32px_rgba(56,189,248,0.2)] transition hover:bg-sky-300"
+                  >
+                    <Download className="h-4 w-4" />
+                    Download Windows installer (.exe)
+                  </a>
+                  <span className="ml-2 text-sm text-slate-400">v{windowsDownload.version}</span>
+                </>
+              ) : (
               <a
                 href={windowsDownload.downloadUrl}
                 download
