@@ -26,11 +26,6 @@ export default function HomePage() {
     downloadUrl: windowsRelease.installerDownloadUrl || undefined,
     version: windowsRelease.version,
   };
-  const windowsVersion = windowsRelease.version;
-    available: windowsRelease.available,
-    downloadUrl: windowsRelease.installerDownloadUrl || undefined,
-    version: windowsRelease.version,
-  };
   const [macDownloads, setMacDownloads] = useState<{
     available: boolean;
     architectures?: {
@@ -101,15 +96,6 @@ export default function HomePage() {
                   </a>
                   <span className="ml-2 text-sm text-slate-400">v{windowsDownload.version}</span>
                 </>
-              ) : (
-                <a
-                  href={windowsDownload.downloadUrl}
-                  download
-                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-400 px-6 py-3.5 text-sm font-semibold text-slate-950 shadow-[0_0_32px_rgba(56,189,248,0.2)] transition hover:bg-sky-300"
-                >
-                  <Download className="h-4 w-4" />
-                  Download Windows installer (.exe)
-                </a>
               ) : (
                 <span className="inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-6 py-3.5 text-sm font-semibold text-slate-500">
                   <Download className="h-4 w-4" />
@@ -330,26 +316,17 @@ export default function HomePage() {
           </div>
           <div className="flex w-full shrink-0 flex-col gap-3 sm:w-auto sm:flex-row">
             {showWindowsDownload ? (
-                <>
-                  <a
-                    href={windowsDownload.downloadUrl}
-                    download
-                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-400 px-6 py-3.5 text-sm font-semibold text-slate-950 shadow-[0_0_32px_rgba(56,189,248,0.2)] transition hover:bg-sky-300"
-                  >
-                    <Download className="h-4 w-4" />
-                    Download Windows installer (.exe)
-                  </a>
-                  <span className="ml-2 text-sm text-slate-400">v{windowsDownload.version}</span>
-                </>
-              ) : (
-              <a
-                href={windowsDownload.downloadUrl}
-                download
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-400 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-sky-300"
-              >
-                <Download className="h-4 w-4" />
-                Windows installer (.exe)
-              </a>
+              <>
+                <a
+                  href={windowsDownload.downloadUrl}
+                  download
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-400 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-sky-300"
+                >
+                  <Download className="h-4 w-4" />
+                  Windows installer (.exe)
+                </a>
+                <span className="text-sm text-slate-400">v{windowsDownload.version}</span>
+              </>
             ) : (
               <span className="inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-5 py-3 text-sm font-semibold text-slate-500">
                 <Download className="h-4 w-4" />
