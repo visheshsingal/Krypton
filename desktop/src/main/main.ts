@@ -53,9 +53,10 @@ if (cachedPolicy) {
   securityEngine.updatePolicy(cachedPolicy);
 }
 
-// Start real-time zero-friction protection on launch
-windowsAgent.startAllMonitors();
-void networkInterceptor.start();
+if (store.get('token')) {
+  windowsAgent.startAllMonitors();
+  void networkInterceptor.start();
+}
 
 let mainWindow: BrowserWindow | null = null;
 const managedBrowserSessions = new Map<ManagedBrowserKind, ManagedBrowserSession>();
@@ -767,7 +768,7 @@ function setupIpcHandlers() {
         windowsAgent.updateScanner(securityEngine);
         networkInterceptor.updateScanner(securityEngine);
       }
-      windowsAgent.startClipboardMonitor();
+      windowsAgent.startAllMonitors();
       void networkInterceptor.start();
 
       return { success: true, ...data };

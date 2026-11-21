@@ -14,6 +14,13 @@ import {
   Keyboard,
   ClipboardCheck,
   Flame,
+  KeyRound,
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  AlertTriangle,
+  LogOut,
 } from 'lucide-react';
 
 interface StoredState {
@@ -35,7 +42,6 @@ interface TargetItem {
   domain: string;
   desktopProcess: string;
   type: 'both' | 'web';
-  enabled: boolean;
   color: string;
   url: string;
 }
@@ -62,14 +68,13 @@ interface ProtectionSummary {
   recentEvents: SecurityEventItem[];
 }
 
-const DEFAULT_TARGETS: TargetItem[] = [
+const ENFORCED_TARGETS: TargetItem[] = [
   {
     id: 'chatgpt',
     name: 'ChatGPT',
     domain: 'chatgpt.com',
-    desktopProcess: 'ChatGPT.exe / Chrome',
+    desktopProcess: 'ChatGPT.exe / Chrome / Edge',
     type: 'both',
-    enabled: true,
     color: 'from-emerald-500 to-teal-600',
     url: 'https://chatgpt.com',
   },
@@ -77,9 +82,8 @@ const DEFAULT_TARGETS: TargetItem[] = [
     id: 'gemini',
     name: 'Google Gemini',
     domain: 'gemini.google.com',
-    desktopProcess: 'Chrome / Edge / Web',
+    desktopProcess: 'Chrome / Edge / Brave',
     type: 'web',
-    enabled: true,
     color: 'from-blue-500 to-indigo-600',
     url: 'https://gemini.google.com',
   },
@@ -87,9 +91,8 @@ const DEFAULT_TARGETS: TargetItem[] = [
     id: 'claude',
     name: 'Claude AI',
     domain: 'claude.ai',
-    desktopProcess: 'Claude.exe / Chrome',
+    desktopProcess: 'Claude.exe / Chrome / Edge',
     type: 'both',
-    enabled: true,
     color: 'from-amber-500 to-orange-600',
     url: 'https://claude.ai',
   },
@@ -97,9 +100,8 @@ const DEFAULT_TARGETS: TargetItem[] = [
     id: 'copilot',
     name: 'Microsoft Copilot',
     domain: 'copilot.microsoft.com',
-    desktopProcess: 'Windows Copilot / Edge',
+    desktopProcess: 'Windows Copilot / Edge / Chrome',
     type: 'both',
-    enabled: true,
     color: 'from-sky-500 to-cyan-600',
     url: 'https://copilot.microsoft.com',
   },
@@ -107,9 +109,8 @@ const DEFAULT_TARGETS: TargetItem[] = [
     id: 'perplexity',
     name: 'Perplexity AI',
     domain: 'perplexity.ai',
-    desktopProcess: 'Perplexity.exe / Web',
+    desktopProcess: 'Perplexity.exe / Web Browsers',
     type: 'both',
-    enabled: true,
     color: 'from-violet-500 to-purple-600',
     url: 'https://perplexity.ai',
   },
@@ -118,13 +119,21 @@ const DEFAULT_TARGETS: TargetItem[] = [
 export default function App() {
   const bridge = (window as any).kryptonDesktop;
 
-  // Protection state (Always active out of the box - no activation code needed)
+  // Activation & Auth
+  const [isActivated, setIsActivated] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
   const [storedState, setStoredState] = useState<StoredState | null>(null);
 
-  // Protection & Targets
+  // Form Inputs
+  const [licenseKeyInput, setLicenseKeyInput] = useState('');
+  const [emailInput, setEmailInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  // Protection & Stats
   const [protectionActive, setProtectionActive] = useState(true);
-  const [targets, setTargets] = useState<TargetItem[]>(DEFAULT_TARGETS);
   const [stats, setStats] = useState({ scannedCount: 0, blockedCount: 0, allowedCount: 0 });
   const [recentEvents, setRecentEvents] = useState<SecurityEventItem[]>([]);
   const [deviceInfo, setDeviceInfo] = useState<{ deviceId?: string; osVersion?: string; appVersion?: string }>({});
@@ -150,9 +159,12 @@ export default function App() {
         ]);
 
         if (devInfo) setDeviceInfo(devInfo);
-        if (state) setStoredState(state);
 
-        await refreshSummary();
+        if (state && state.token) {
+          setStoredState(state);
+          setIsActivated(true);
+          await refreshSummary();
+        }
       } catch (err) {
         console.warn('Initialization error:', err);
       } finally {
@@ -163,16 +175,16 @@ export default function App() {
     void loadInitial();
   }, []);
 
-  // Poll summary for real-time stats
+  // Poll summary for real-time stats when activated
   useEffect(() => {
-    if (!bridge?.getWindowsProtectionSummary) return;
+    if (!isActivated || !bridge?.getWindowsProtectionSummary) return;
 
     const interval = setInterval(() => {
       refreshSummary();
     }, 2500);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [isActivated]);
 
   const refreshSummary = async () => {
     if (!bridge?.getWindowsProtectionSummary) return;
@@ -190,22 +202,44 @@ export default function App() {
     }
   };
 
-  const handleToggleProtection = async () => {
-    const nextState = !protectionActive;
-    setProtectionActive(nextState);
-    if (bridge?.toggleWindowsProtection) {
-      await bridge.toggleWindowsProtection(nextState);
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    setAuthLoading(true);
+
+    try {
+      if (!bridge?.activate) {
+        throw new Error('Desktop bridge not available.');
+      }
+
+      const res = await bridge.activate({
+        licenseKey: licenseKeyInput,
+        email: emailInput,
+        password: passwordInput,
+      });
+
+      if (!res.success) {
+        setAuthError(res.error || 'Activation failed. Please check company credentials.');
+        return;
+      }
+
+      const state = await bridge.getStoredState();
+      setStoredState(state);
+      setIsActivated(true);
       await refreshSummary();
+    } catch (err: any) {
+      setAuthError(err.message || 'Connection error.');
+    } finally {
+      setAuthLoading(false);
     }
   };
 
-  const handleToggleTarget = async (targetId: string) => {
-    const updated = targets.map((t) => (t.id === targetId ? { ...t, enabled: !t.enabled } : t));
-    setTargets(updated);
-    const target = updated.find((t) => t.id === targetId);
-    if (bridge?.toggleWindowsTarget && target) {
-      await bridge.toggleWindowsTarget(targetId, target.enabled);
-    }
+  const handleLogout = async () => {
+    if (!bridge?.logout) return;
+    await bridge.logout();
+    setIsActivated(false);
+    setStoredState(null);
+    setPasswordInput('');
   };
 
   const handleTestScan = async () => {
@@ -238,14 +272,133 @@ export default function App() {
     return (
       <div className="flex h-screen items-center justify-center bg-[#070b14] text-slate-300">
         <RefreshCw className="h-6 w-6 animate-spin text-sky-400" />
-        <span className="ml-3 text-sm font-medium">Starting Krypton DLP Agent…</span>
+        <span className="ml-3 text-sm font-medium">Starting Krypton Enterprise Agent…</span>
       </div>
     );
   }
 
+  // =========================================================================
+  // VIEW 1: ENTERPRISE LICENSE & CREDENTIAL ACTIVATION
+  // =========================================================================
+  if (!isActivated) {
+    return (
+      <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#070b14] px-4 font-sans text-slate-100 select-none">
+        {/* Ambient glow */}
+        <div className="pointer-events-none absolute -top-40 left-1/2 h-[450px] w-[600px] -translate-x-1/2 rounded-full bg-sky-500/10 blur-[130px]" />
+        <div className="pointer-events-none absolute -bottom-40 right-10 h-[350px] w-[450px] rounded-full bg-indigo-500/10 blur-[120px]" />
+
+        <div className="relative w-full max-w-md rounded-2xl border border-slate-800/90 bg-[#0c1322]/95 p-8 shadow-2xl shadow-black/80 backdrop-blur-xl">
+          {/* Logo & Headline */}
+          <div className="text-center">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-tr from-sky-500 via-indigo-500 to-teal-400 shadow-lg shadow-sky-500/25">
+              <ShieldCheck className="h-8 w-8 text-white" />
+            </div>
+            <h1 className="mt-4 text-2xl font-bold tracking-tight text-white">Krypton Enterprise</h1>
+            <p className="mt-1 text-xs text-slate-400">
+              Corporate AI Data Loss Prevention · Endpoint Activation
+            </p>
+          </div>
+
+          {authError && (
+            <div className="mt-5 flex items-start gap-2.5 rounded-xl border border-rose-500/20 bg-rose-500/10 p-3.5 text-xs text-rose-300">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-rose-400 mt-0.5" />
+              <span>{authError}</span>
+            </div>
+          )}
+
+          {/* Form */}
+          <form onSubmit={handleLogin} className="mt-6 space-y-4">
+            <div>
+              <label className="text-[11px] font-semibold tracking-wider text-slate-400 uppercase">
+                Company License Key
+              </label>
+              <div className="relative mt-1.5">
+                <KeyRound className="absolute top-3 left-3 h-4 w-4 text-slate-500" />
+                <input
+                  type="text"
+                  required
+                  placeholder="KRP-XXXX-XXXX-XXXX"
+                  value={licenseKeyInput}
+                  onChange={(e) => setLicenseKeyInput(e.target.value)}
+                  className="w-full rounded-xl border border-slate-800 bg-slate-950/70 py-2.5 pr-4 pl-10 text-sm font-mono text-white placeholder-slate-600 transition focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-semibold tracking-wider text-slate-400 uppercase">
+                Employee Email
+              </label>
+              <div className="relative mt-1.5">
+                <Mail className="absolute top-3 left-3 h-4 w-4 text-slate-500" />
+                <input
+                  type="email"
+                  required
+                  placeholder="employee@company.com"
+                  value={emailInput}
+                  onChange={(e) => setEmailInput(e.target.value)}
+                  className="w-full rounded-xl border border-slate-800 bg-slate-950/70 py-2.5 pr-4 pl-10 text-sm text-white placeholder-slate-600 transition focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-semibold tracking-wider text-slate-400 uppercase">
+                Password
+              </label>
+              <div className="relative mt-1.5">
+                <Lock className="absolute top-3 left-3 h-4 w-4 text-slate-500" />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  placeholder="••••••••••••"
+                  value={passwordInput}
+                  onChange={(e) => setPasswordInput(e.target.value)}
+                  className="w-full rounded-xl border border-slate-800 bg-slate-950/70 py-2.5 pr-10 pl-10 text-sm text-white placeholder-slate-600 transition focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute top-2.5 right-3 text-slate-500 hover:text-slate-300"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={authLoading}
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 via-sky-600 to-indigo-600 py-3 text-sm font-semibold text-white shadow-lg shadow-sky-500/25 transition hover:brightness-110 active:scale-[0.99] disabled:opacity-50"
+            >
+              {authLoading ? (
+                <>
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  Verifying License & Activating…
+                </>
+              ) : (
+                'Activate & Enforce DLP Protection'
+              )}
+            </button>
+          </form>
+
+          {/* Policy Information */}
+          <div className="mt-6 rounded-xl border border-slate-800/80 bg-slate-950/50 p-3 text-center">
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              ⚡ <strong className="text-slate-200">Zero-Extension DLP:</strong> Intercepts sensitive prompts and clipboard data across all browsers automatically. All incidents are logged to company security dashboard.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // VIEW 2: PROFESSIONAL ENTERPRISE ENDPOINT DASHBOARD (Tamper-Proof)
+  // =========================================================================
   return (
     <div className="min-h-screen bg-[#070b14] font-sans text-slate-100 select-none">
-      {/* Top Navigation Bar */}
+      {/* Top Header */}
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-800/80 bg-[#090e1c]/90 px-6 py-3.5 backdrop-blur-md">
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-sky-500 via-indigo-500 to-teal-400 shadow-md shadow-sky-500/20">
@@ -255,89 +408,69 @@ export default function App() {
             <div className="flex items-center gap-2">
               <h1 className="text-sm font-bold tracking-tight text-white">KRYPTON ENDPOINT</h1>
               <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-400 border border-emerald-500/20">
-                ACTIVE
+                POLICY ENFORCED
               </span>
             </div>
             <p className="text-[10px] text-slate-400">
-              Endpoint: {deviceInfo.deviceId || 'LOCAL-PC'} · Native AI DLP
+              Device: {deviceInfo.deviceId || storedState?.deviceId || 'WIN-ENDPOINT'} · Agent v{deviceInfo.appVersion || '1.0.1'}
             </p>
           </div>
         </div>
 
-        {/* Protection Mode Pill */}
-        <div className="flex items-center gap-3">
-          <div className="text-right hidden sm:block">
-            <p className="text-xs font-medium text-white">Direct Browser & App Protection</p>
+        {/* User Badge & Logout */}
+        <div className="flex items-center gap-4">
+          <div className="text-right">
+            <p className="text-xs font-medium text-white">{storedState?.user?.email || 'Protected Employee'}</p>
             <span className="inline-flex items-center gap-1.5 text-[10px] text-emerald-400 font-semibold">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              Zero Extension Needed
+              Company License Active
             </span>
           </div>
-          <div className="rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-300 flex items-center gap-1.5">
-            <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-            <span>Ready</span>
-          </div>
+
+          <button
+            onClick={handleLogout}
+            title="Log out of this device"
+            className="flex items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-400 transition hover:border-rose-500/40 hover:bg-rose-500/10 hover:text-rose-300"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+            <span>Deactivate</span>
+          </button>
         </div>
       </header>
 
       {/* Main Content Dashboard */}
       <main className="mx-auto max-w-6xl p-6 sm:p-8 space-y-6">
-        {/* Shield Status Hero Card */}
+        {/* Shield Status Hero Card (Tamper-Proof, Locked by Admin) */}
         <div className="relative overflow-hidden rounded-2xl border border-sky-500/20 bg-gradient-to-r from-[#0c162d] via-[#091122] to-[#080d1a] p-6 shadow-2xl">
           <div className="pointer-events-none absolute -right-10 -top-10 h-64 w-64 rounded-full bg-sky-500/10 blur-3xl" />
 
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
             <div className="flex items-center gap-4">
-              <div
-                className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border transition ${
-                  protectionActive
-                    ? 'border-emerald-500/30 bg-emerald-500/15 text-emerald-400 shadow-lg shadow-emerald-500/20'
-                    : 'border-slate-800 bg-slate-900 text-slate-500'
-                }`}
-              >
-                {protectionActive ? <ShieldCheck className="h-9 w-9" /> : <ShieldAlert className="h-9 w-9" />}
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-emerald-500/30 bg-emerald-500/15 text-emerald-400 shadow-lg shadow-emerald-500/20">
+                <ShieldCheck className="h-9 w-9" />
               </div>
               <div>
                 <div className="flex items-center gap-2.5">
                   <h2 className="text-xl font-bold text-white">
-                    {protectionActive ? 'Real-Time Protection is ACTIVE' : 'Protection is PAUSED'}
+                    Enterprise Real-Time Protection is ENFORCED & ACTIVE
                   </h2>
-                  <span
-                    className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                      protectionActive
-                        ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                        : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                    }`}
-                  >
-                    {protectionActive ? 'SHIELD ON' : 'DISABLED'}
+                  <span className="rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-0.5 text-xs font-semibold">
+                    MANAGED
                   </span>
                 </div>
                 <p className="mt-1 text-xs text-slate-400 max-w-xl">
-                  {protectionActive
-                    ? 'Automatically protects your normal Google Chrome, Microsoft Edge, Brave, and desktop AI clients. Open ChatGPT or any AI tool yourself—typed prompts and copy-paste are scanned automatically with zero extensions or activation codes needed.'
-                    : 'Interception is paused. Outgoing prompts and inputs are currently unmonitored.'}
+                  Centrally managed by your organization. Automatically intercepts outgoing prompts and sensitive data typed or pasted into Google Chrome, Microsoft Edge, Brave, and desktop AI apps without requiring browser extensions.
                 </p>
               </div>
             </div>
 
-            {/* Toggle Switch */}
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={handleToggleProtection}
-                className={`relative inline-flex h-7 w-14 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                  protectionActive ? 'bg-sky-500' : 'bg-slate-800'
-                }`}
-              >
-                <span
-                  className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                    protectionActive ? 'translate-x-7' : 'translate-x-0'
-                  }`}
-                />
-              </button>
-              <span className="text-xs font-medium text-slate-300">
-                {protectionActive ? 'Enabled' : 'Disabled'}
-              </span>
+            {/* Locked Policy Indicator */}
+            <div className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-950/70 px-3.5 py-2">
+              <Lock className="h-4 w-4 text-emerald-400" />
+              <div className="text-left">
+                <p className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider">IT Policy Enforced</p>
+                <p className="text-[10px] text-slate-500">Tamper-Proof Protection</p>
+              </div>
             </div>
           </div>
         </div>
@@ -349,9 +482,9 @@ export default function App() {
               <Globe className="h-5 w-5" />
             </div>
             <div>
-              <h4 className="text-xs font-bold text-white">Normal Browser Guard</h4>
+              <h4 className="text-xs font-bold text-white">Automatic Browser Guard</h4>
               <p className="mt-1 text-[11px] text-slate-400 leading-relaxed">
-                Open Chrome or Edge normally on your PC. No special browser profiles or &quot;Open Protected&quot; buttons needed.
+                Applies automatically when you open regular Chrome or Edge. No special profiles or extension installation required.
               </p>
             </div>
           </div>
@@ -363,7 +496,7 @@ export default function App() {
             <div>
               <h4 className="text-xs font-bold text-white">Live Typing & Input DLP</h4>
               <p className="mt-1 text-[11px] text-slate-400 leading-relaxed">
-                Scans text as you type directly into ChatGPT, Gemini, or Claude. Detects API keys & secrets before submission.
+                Scans prompts in real-time as you write in ChatGPT, Claude, Gemini, etc., blocking secrets before submission.
               </p>
             </div>
           </div>
@@ -375,7 +508,7 @@ export default function App() {
             <div>
               <h4 className="text-xs font-bold text-white">Instant Clipboard Guard</h4>
               <p className="mt-1 text-[11px] text-slate-400 leading-relaxed">
-                Automatically redacts sensitive secrets if you copy or paste text destined for AI chatbots.
+                Instantly redacts API keys, credentials, and confidential secrets if copied or pasted into AI chat windows.
               </p>
             </div>
           </div>
@@ -412,37 +545,34 @@ export default function App() {
 
           <div className="rounded-2xl border border-slate-800/80 bg-[#0a0f1d] p-5">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-400">Protected Targets</span>
+              <span className="text-xs font-medium text-slate-400">Enforced Targets</span>
               <Monitor className="h-4 w-4 text-indigo-400" />
             </div>
-            <p className="mt-2 text-2xl font-bold text-white">{targets.filter((t) => t.enabled).length}</p>
-            <p className="mt-1 text-[11px] text-slate-500">AI sites + desktop apps</p>
+            <p className="mt-2 text-2xl font-bold text-white">5 / 5</p>
+            <p className="mt-1 text-[11px] text-slate-500">All AI platforms locked</p>
           </div>
         </div>
 
-        {/* Protected Targets Section */}
+        {/* Enforced AI Platforms Section (NO select/deselect toggles - Policy Enforced) */}
         <section className="space-y-3">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-base font-bold text-white">Monitored AI Platforms</h3>
+              <h3 className="text-base font-bold text-white">Enforced AI Target Platforms</h3>
               <p className="text-xs text-slate-400">
-                Guarding prompts on any browser you open and native desktop applications.
+                Always active across browser tabs and desktop applications. End-user override is disabled by company policy.
               </p>
             </div>
-            <span className="rounded-full bg-slate-900 border border-slate-800 px-3 py-1 text-[11px] text-sky-400">
-              Zero Configuration
+            <span className="rounded-full bg-slate-900 border border-slate-800 px-3 py-1 text-[11px] text-emerald-400 font-semibold flex items-center gap-1.5">
+              <Lock className="h-3 w-3" />
+              Always Enforced
             </span>
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {targets.map((target) => (
+            {ENFORCED_TARGETS.map((target) => (
               <div
                 key={target.id}
-                className={`group rounded-2xl border p-4 transition ${
-                  target.enabled
-                    ? 'border-slate-800/80 bg-[#0a0f1d] hover:border-slate-700'
-                    : 'border-slate-900 bg-[#080c16] opacity-60'
-                }`}
+                className="group rounded-2xl border border-slate-800/80 bg-[#0a0f1d] p-4 transition"
               >
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
@@ -460,13 +590,11 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Toggle target */}
-                  <input
-                    type="checkbox"
-                    checked={target.enabled}
-                    onChange={() => handleToggleTarget(target.id)}
-                    className="h-4 w-4 rounded accent-sky-400 cursor-pointer"
-                  />
+                  {/* Enforced Lock Badge (NO checkbox!) */}
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">
+                    <CheckCircle2 className="h-3 w-3" />
+                    Guarded
+                  </span>
                 </div>
 
                 <div className="mt-3 flex items-center justify-between border-t border-slate-800/60 pt-2.5 text-[11px]">
@@ -496,7 +624,7 @@ export default function App() {
                 Live Prompt DLP Tester
               </h3>
               <p className="text-xs text-slate-400">
-                Test how Krypton scans and blocks sensitive secrets or allows safe prompts in real-time.
+                Test how Krypton scans and blocks sensitive secrets or allows safe prompts against company policy.
               </p>
             </div>
             <div className="flex gap-2">
@@ -569,7 +697,7 @@ export default function App() {
               <Flame className="h-4 w-4 text-amber-400" />
               Recent Endpoint DLP Activity
             </h3>
-            <span className="text-[11px] text-slate-500">Live feed from browsers & clipboard</span>
+            <span className="text-[11px] text-slate-500">Live feed synced with company security center</span>
           </div>
 
           {recentEvents.length === 0 ? (
