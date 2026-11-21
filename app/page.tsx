@@ -23,10 +23,7 @@ export default function HomePage() {
   const [prompt, setPrompt] = useState(demoPrompt);
   const windowsDownload = {
     available: windowsRelease.available,
-    downloadUrl:
-      process.env.NODE_ENV === 'development'
-        ? '/downloads/Krypton-Security-Setup-1.0.1.exe'
-        : windowsRelease.installerDownloadUrl || '/downloads/Krypton-Security-Setup-1.0.1.exe',
+    downloadUrl: windowsRelease.installerDownloadUrl || undefined,
     version: windowsRelease.version,
   };
   const [macDownloads, setMacDownloads] = useState<{
