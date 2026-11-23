@@ -81,7 +81,9 @@ export default function App() {
   const [inputMonitorReady, setInputMonitorReady] = useState(false);
   const [stats, setStats] = useState({ scannedCount: 0, blockedCount: 0, allowedCount: 0 });
   const [recentEvents, setRecentEvents] = useState<SecurityEventItem[]>([]);
-  const [deviceInfo, setDeviceInfo] = useState<{ deviceId?: string; osVersion?: string; appVersion?: string }>({});
+  const [deviceInfo, setDeviceInfo] = useState<{ deviceId?: string; osVersion?: string; appVersion?: string; platform?: string }>({});
+  const [managedBrowserLoading, setManagedBrowserLoading] = useState<'chrome' | 'edge' | null>(null);
+  const [managedBrowserError, setManagedBrowserError] = useState<string | null>(null);
 
   // Interactive Live Scanner Tester
   const [testInput, setTestInput] = useState('');
@@ -218,6 +220,26 @@ export default function App() {
     if (result?.success) {
       setProtectionActive(result.active);
       await refreshSummary();
+    }
+  };
+
+  const openProtectedChatGPT = async (browser: 'chrome' | 'edge') => {
+    if (!bridge?.openProtectedBrowser) {
+      setManagedBrowserError('Protected browser launch is unavailable in this app build.');
+      return;
+    }
+
+    setManagedBrowserLoading(browser);
+    setManagedBrowserError(null);
+    try {
+      const result = await bridge.openProtectedBrowser(browser, 'chatgpt');
+      if (!result?.success) {
+        setManagedBrowserError(result?.error || 'Could not open the protected browser.');
+      }
+    } catch (error) {
+      setManagedBrowserError(error instanceof Error ? error.message : 'Could not open the protected browser.');
+    } finally {
+      setManagedBrowserLoading(null);
     }
   };
 
@@ -455,6 +477,44 @@ export default function App() {
           </div>
         </div>
 
+        <section className="rounded-2xl border border-sky-500/20 bg-[#0a0f1d] p-5 sm:p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <Globe className="mt-0.5 h-5 w-5 shrink-0 text-sky-400" />
+              <div>
+                <h3 className="text-sm font-bold text-white">Protected ChatGPT Browser</h3>
+                <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-400">
+                  Open ChatGPT in Krypton’s isolated Chrome or Edge profile for local prompt inspection. No extension is required in this managed profile; regular browser windows are not covered by this request-level protection.
+                </p>
+              </div>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              <button
+                type="button"
+                onClick={() => void openProtectedChatGPT('chrome')}
+                disabled={deviceInfo.platform !== 'win32' || managedBrowserLoading !== null}
+                className="rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs font-semibold text-sky-200 transition hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {managedBrowserLoading === 'chrome' ? 'Opening…' : 'Open in Chrome'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void openProtectedChatGPT('edge')}
+                disabled={deviceInfo.platform !== 'win32' || managedBrowserLoading !== null}
+                className="rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs font-semibold text-sky-200 transition hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {managedBrowserLoading === 'edge' ? 'Opening…' : 'Open in Edge'}
+              </button>
+            </div>
+          </div>
+          {deviceInfo.platform !== 'win32' && (
+            <p className="mt-3 text-xs text-amber-300">Managed browser prompt inspection is currently available on Windows only.</p>
+          )}
+          {managedBrowserError && (
+            <p className="mt-3 text-xs text-rose-300" role="alert">{managedBrowserError}</p>
+          )}
+        </section>
+
         {/* Live Metrics Grid */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="rounded-2xl border border-slate-800/80 bg-[#0a0f1d] p-5">
@@ -578,7 +638,7 @@ export default function App() {
 
           {recentEvents.length === 0 ? (
             <div className="rounded-xl border border-dashed border-slate-800 p-6 text-center text-xs text-slate-500">
-              No threats detected yet. Krypton is actively guarding Chrome, Edge, and clipboard inputs in the background.
+              No DLP activity recorded yet. Use the protected-browser buttons above for request-level inspection without an extension. Standard browser windows are not attached to that managed profile.
             </div>
           ) : (
             <div className="space-y-2">
