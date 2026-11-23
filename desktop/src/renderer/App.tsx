@@ -3,12 +3,9 @@ import {
   ShieldCheck,
   ShieldAlert,
   Globe,
-  Monitor,
   CheckCircle2,
   XCircle,
   RefreshCw,
-  ExternalLink,
-  Sparkles,
   Terminal,
   Activity,
   Keyboard,
@@ -36,16 +33,6 @@ interface StoredState {
   usbMonitoringEnabled?: boolean;
 }
 
-interface TargetItem {
-  id: string;
-  name: string;
-  domain: string;
-  desktopProcess: string;
-  type: 'both' | 'web';
-  color: string;
-  url: string;
-}
-
 interface SecurityEventItem {
   id: string;
   timestamp: string;
@@ -67,54 +54,6 @@ interface ProtectionSummary {
   };
   recentEvents: SecurityEventItem[];
 }
-
-const ENFORCED_TARGETS: TargetItem[] = [
-  {
-    id: 'chatgpt',
-    name: 'ChatGPT',
-    domain: 'chatgpt.com',
-    desktopProcess: 'ChatGPT.exe / Chrome / Edge',
-    type: 'both',
-    color: 'from-emerald-500 to-teal-600',
-    url: 'https://chatgpt.com',
-  },
-  {
-    id: 'gemini',
-    name: 'Google Gemini',
-    domain: 'gemini.google.com',
-    desktopProcess: 'Chrome / Edge / Brave',
-    type: 'web',
-    color: 'from-blue-500 to-indigo-600',
-    url: 'https://gemini.google.com',
-  },
-  {
-    id: 'claude',
-    name: 'Claude AI',
-    domain: 'claude.ai',
-    desktopProcess: 'Claude.exe / Chrome / Edge',
-    type: 'both',
-    color: 'from-amber-500 to-orange-600',
-    url: 'https://claude.ai',
-  },
-  {
-    id: 'copilot',
-    name: 'Microsoft Copilot',
-    domain: 'copilot.microsoft.com',
-    desktopProcess: 'Windows Copilot / Edge / Chrome',
-    type: 'both',
-    color: 'from-sky-500 to-cyan-600',
-    url: 'https://copilot.microsoft.com',
-  },
-  {
-    id: 'perplexity',
-    name: 'Perplexity AI',
-    domain: 'perplexity.ai',
-    desktopProcess: 'Perplexity.exe / Web Browsers',
-    type: 'both',
-    color: 'from-violet-500 to-purple-600',
-    url: 'https://perplexity.ai',
-  },
-];
 
 export default function App() {
   const bridge = (window as any).kryptonDesktop;
@@ -515,7 +454,7 @@ export default function App() {
         </div>
 
         {/* Live Metrics Grid */}
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="rounded-2xl border border-slate-800/80 bg-[#0a0f1d] p-5">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-slate-400">Total Scanned</span>
@@ -542,78 +481,7 @@ export default function App() {
             <p className="mt-2 text-2xl font-bold text-emerald-400">{stats.allowedCount}</p>
             <p className="mt-1 text-[11px] text-slate-500">Authorized safe submissions</p>
           </div>
-
-          <div className="rounded-2xl border border-slate-800/80 bg-[#0a0f1d] p-5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-400">Enforced Targets</span>
-              <Monitor className="h-4 w-4 text-indigo-400" />
-            </div>
-            <p className="mt-2 text-2xl font-bold text-white">5 / 5</p>
-            <p className="mt-1 text-[11px] text-slate-500">All AI platforms locked</p>
-          </div>
         </div>
-
-        {/* Enforced AI Platforms Section (NO select/deselect toggles - Policy Enforced) */}
-        <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-base font-bold text-white">Enforced AI Target Platforms</h3>
-              <p className="text-xs text-slate-400">
-                Always active across browser tabs and desktop applications. End-user override is disabled by company policy.
-              </p>
-            </div>
-            <span className="rounded-full bg-slate-900 border border-slate-800 px-3 py-1 text-[11px] text-emerald-400 font-semibold flex items-center gap-1.5">
-              <Lock className="h-3 w-3" />
-              Always Enforced
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {ENFORCED_TARGETS.map((target) => (
-              <div
-                key={target.id}
-                className="group rounded-2xl border border-slate-800/80 bg-[#0a0f1d] p-4 transition"
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-tr ${target.color} shadow-md text-white`}
-                    >
-                      <Sparkles className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-semibold text-white">{target.name}</h4>
-                      <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-400">
-                        <Globe className="h-3 w-3 text-slate-500" />
-                        <span>{target.domain}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Enforced Lock Badge (NO checkbox!) */}
-                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">
-                    <CheckCircle2 className="h-3 w-3" />
-                    Guarded
-                  </span>
-                </div>
-
-                <div className="mt-3 flex items-center justify-between border-t border-slate-800/60 pt-2.5 text-[11px]">
-                  <span className="text-slate-400">
-                    Scope: <strong className="text-slate-300 font-mono">{target.desktopProcess}</strong>
-                  </span>
-                  <a
-                    href={target.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-sky-400 hover:text-sky-300"
-                  >
-                    Open <ExternalLink className="h-3 w-3" />
-                  </a>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
 
         {/* Live Interactive Scanner Tester */}
         <section className="rounded-2xl border border-slate-800/80 bg-[#0a0f1d] p-5 sm:p-6 space-y-4">

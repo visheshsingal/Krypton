@@ -1,5 +1,8 @@
 import { clipboard, Notification } from 'electron';
 import { spawn, ChildProcess } from 'node:child_process';
+import fsSync from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { PromptSecurityEngine } from '../engine/scanner';
 import { PromptScanResult, RiskLevel } from '@krypton/shared';
 
@@ -40,7 +43,7 @@ export interface WindowsProtectionSummary {
 export const DEFAULT_PROTECTED_TARGETS: ProtectedTargetConfig[] = [
   {
     id: 'chatgpt',
-    name: 'ChatGPT (Web & Windows App)',
+    name: 'ChatGPT',
     type: 'both',
     domain: 'chatgpt.com',
     processNames: ['ChatGPT.exe', 'chatgpt.exe'],
@@ -58,7 +61,7 @@ export const DEFAULT_PROTECTED_TARGETS: ProtectedTargetConfig[] = [
   },
   {
     id: 'claude',
-    name: 'Claude AI (Web & Windows App)',
+    name: 'Claude AI',
     type: 'both',
     domain: 'claude.ai',
     processNames: ['Claude.exe', 'claude.exe'],
@@ -132,7 +135,7 @@ export class WindowsProtectionAgent {
       this.lastClipboardText = '';
     }
 
-    // Monitor clipboard changes every 600ms to inspect text pasted into AI apps or browsers
+    // Monitor clipboard changes every 500ms to inspect text pasted into AI apps or browsers
     this.clipboardPollTimer = setInterval(() => {
       if (!this.active) return;
       try {
@@ -144,7 +147,7 @@ export class WindowsProtectionAgent {
       } catch {
         // Ignore clipboard lock errors in Windows
       }
-    }, 600);
+    }, 500);
   }
 
   public stopClipboardMonitor(): void {
@@ -162,71 +165,160 @@ export class WindowsProtectionAgent {
     }
 
     try {
-      // PowerShell script using Windows UI Automation and User32 GetForegroundWindow
-      // to observe text entered in Chrome/Edge/Brave/desktop apps on ChatGPT, Gemini, Claude, etc.
+      // Robust native C# low-level keyboard hook (SetWindowsHookEx WH_KEYBOARD_LL)
+      // Captures typed characters when active window is an AI site (ChatGPT, Gemini, Claude, Copilot, Perplexity)
       const psScript = `
-Add-Type -AssemblyName UIAutomationClient -ErrorAction SilentlyContinue
-Add-Type -AssemblyName UIAutomationTypes -ErrorAction SilentlyContinue
+Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
 
-$sig = @"
-[DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-[DllImport("user32.dll", SetLastError=true, CharSet=CharSet.Auto)] public static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder lpString, int nMaxCount);
-"@
-$Win32 = Add-Type -MemberDefinition $sig -Name "KryptonWin32" -Namespace "Krypton" -PassThru -ErrorAction SilentlyContinue
+$source = @"
+using System;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Windows.Forms;
 
-$keywords = @("chatgpt", "gemini", "claude", "copilot", "perplexity", "openai", "anthropic")
-$sb = New-Object System.Text.StringBuilder 512
-$lastVal = ""
+public class KryptonInputGuard {
+    private const int WH_KEYBOARD_LL = 13;
+    private const int WM_KEYDOWN = 0x0100;
+    private const int WM_SYSKEYDOWN = 0x0104;
+    private const int VK_BACK = 0x08;
+    private const int VK_RETURN = 0x0D;
+    private const int VK_ESCAPE = 0x1B;
 
-while ($true) {
-    try {
-        $hwnd = [Krypton.KryptonWin32]::GetForegroundWindow()
-        if ($hwnd -ne [IntPtr]::Zero) {
-            $len = [Krypton.KryptonWin32]::GetWindowText($hwnd, $sb, 512)
-            if ($len -gt 0) {
-                $title = $sb.ToString().ToLower()
-                $target = ""
-                foreach ($kw in $keywords) {
-                    if ($title.Contains($kw)) {
-                        $target = $kw
-                        break
-                    }
-                }
-                if ($target -ne "") {
-                    $focused = [System.Windows.Automation.AutomationElement]::FocusedElement
-                    if ($focused -ne $null) {
-                        $txt = ""
-                        try {
-                            $vp = $focused.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
-                            if ($vp -ne $null) { $txt = $vp.Current.Value }
-                        } catch {}
-                        if ([string]::IsNullOrEmpty($txt)) {
-                            try {
-                                $tp = $focused.GetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern)
-                                if ($tp -ne $null) { $txt = $tp.DocumentRange.GetText(-1) }
-                            } catch {}
+    public delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
+    private static LowLevelKeyboardProc _proc = HookCallback;
+    private static IntPtr _hookID = IntPtr.Zero;
+    private static StringBuilder _buffer = new StringBuilder();
+    private static string[] _targetKeywords = new string[] { "chatgpt", "gemini", "claude", "copilot", "perplexity", "openai", "anthropic" };
+    private static StringBuilder _titleSb = new StringBuilder(512);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, IntPtr hMod, uint dwThreadId);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool UnhookWindowsHookEx(IntPtr hhk);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern IntPtr GetModuleHandle(string lpModuleName);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+    private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+
+    [DllImport("user32.dll")]
+    private static extern int ToUnicode(uint wVirtKey, uint wScanCode, byte[] lpKeyState, [Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pwszBuff, int cchBuff, uint wFlags);
+
+    [DllImport("user32.dll")]
+    private static extern bool GetKeyboardState(byte[] lpKeyState);
+
+    public static void Start() {
+        _hookID = SetHook(_proc);
+        Application.Run();
+        UnhookWindowsHookEx(_hookID);
+    }
+
+    private static IntPtr SetHook(LowLevelKeyboardProc proc) {
+        using (Process curProcess = Process.GetCurrentProcess())
+        using (ProcessModule curModule = curProcess.MainModule) {
+            return SetWindowsHookEx(WH_KEYBOARD_LL, proc, GetModuleHandle(curModule.ModuleName), 0);
+        }
+    }
+
+    private static IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam) {
+        if (nCode >= 0 && (wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN)) {
+            int vkCode = Marshal.ReadInt32(lParam);
+
+            IntPtr hwnd = GetForegroundWindow();
+            if (hwnd != IntPtr.Zero) {
+                int len = GetWindowText(hwnd, _titleSb, 512);
+                if (len > 0) {
+                    string title = _titleSb.ToString().ToLower();
+                    string matchedTarget = null;
+                    foreach (string kw in _targetKeywords) {
+                        if (title.Contains(kw)) {
+                            matchedTarget = kw;
+                            break;
                         }
-                        if (-not [string]::IsNullOrEmpty($txt) -and $txt.Length -ge 3 -and $txt -ne $lastVal) {
-                            $lastVal = $txt
-                            $payload = @{ type = "TYPED_INPUT"; target = $target; text = $txt } | ConvertTo-Json -Compress
-                            [Console]::WriteLine($payload)
+                    }
+
+                    if (matchedTarget != null) {
+                        if (vkCode == VK_BACK) {
+                            if (_buffer.Length > 0) {
+                                _buffer.Remove(_buffer.Length - 1, 1);
+                            }
+                        } else if (vkCode == VK_ESCAPE) {
+                            _buffer.Clear();
+                        } else if (vkCode == VK_RETURN) {
+                            string text = _buffer.ToString();
+                            if (text.Length > 0) {
+                                EmitPrompt(matchedTarget, text);
+                                _buffer.Clear();
+                            }
+                        } else {
+                            byte[] keyState = new byte[256];
+                            GetKeyboardState(keyState);
+                            StringBuilder charBuffer = new StringBuilder(10);
+                            int result = ToUnicode((uint)vkCode, 0, keyState, charBuffer, charBuffer.Capacity, 0);
+                          if (result > 0) {
+            string str = charBuffer.ToString();
+            _buffer.Append(str);
+
+            // Emit the current buffer after each keystroke to ensure immediate detection
+            EmitPrompt(matchedTarget, _buffer.ToString());
+
+            // Original length check retained for older logic (optional)
+            string cur = _buffer.ToString();
+            if (cur.Length >= 12 && (cur.Contains("sk-") || cur.Contains("AKIA") || cur.Contains("ghp_") || cur.Contains("password") || cur.Length % 25 == 0)) {
+              EmitPrompt(matchedTarget, cur);
+            }
+          }
+                                string str = charBuffer.ToString();
+                                _buffer.Append(str);
+
+                                string cur = _buffer.ToString();
+                                if (cur.Length >= 12 && (cur.Contains("sk-") || cur.Contains("AKIA") || cur.Contains("ghp_") || cur.Contains("password") || cur.Length % 25 == 0)) {
+                                    EmitPrompt(matchedTarget, cur);
+                                }
+                            }
+                        }
+                    } else {
+                        if (_buffer.Length > 0) {
+                            _buffer.Clear();
                         }
                     }
                 }
             }
         }
-    } catch {}
-    Start-Sleep -Milliseconds 450
+        return CallNextHookEx(_hookID, nCode, wParam, lParam);
+    }
+
+    private static void EmitPrompt(string target, string text) {
+        string escaped = text.Replace("\\\\", "\\\\\\\\").Replace("\\"", "\\\\\\"").Replace("\\r", "").Replace("\\n", "\\\\n");
+        Console.WriteLine("{\\"type\\":\\"TYPED_INPUT\\",\\"target\\":\\"" + target + "\\",\\"text\\":\\"" + escaped + "\\"}");
+    }
 }
+"@
+
+Add-Type -TypeDefinition $source -ReferencedAssemblies System.Windows.Forms -ErrorAction Stop
+[KryptonInputGuard]::Start()
 `;
+
+      const scriptPath = path.join(os.tmpdir(), 'krypton-input-guard.ps1');
+      fsSync.writeFileSync(scriptPath, psScript, 'utf8');
 
       this.inputMonitorProcess = spawn('powershell.exe', [
         '-NoProfile',
         '-NonInteractive',
         '-ExecutionPolicy',
         'Bypass',
-        '-Command',
-        psScript,
+        '-File',
+        scriptPath,
       ], {
         windowsHide: true,
         stdio: ['pipe', 'pipe', 'ignore'],
@@ -244,7 +336,7 @@ while ($true) {
           try {
             const data = JSON.parse(trimmed);
             if (data.type === 'TYPED_INPUT' && typeof data.text === 'string') {
-              this.inspectTypedPrompt(data.text, data.target || 'ChatGPT / AI Web');
+              this.inspectTypedPrompt(data.text, data.target || 'ChatGPT');
             }
           } catch {
             // Non-JSON stdout ignored
@@ -315,7 +407,7 @@ while ($true) {
       const eventRecord: SecurityEventRecord = {
         id: `evt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         timestamp: new Date().toISOString(),
-        targetName: `Active Browser: ${targetName}`,
+        targetName: `Typed Prompt: ${targetName}`,
         actionTaken: 'block',
         riskLevel: result.highestRisk,
         ruleCode: topMatch?.ruleCode || 'SECURITY_POLICY',
@@ -327,7 +419,7 @@ while ($true) {
 
       this.notifyWindows(
         `Krypton DLP: Sensitive Prompt Blocked on ${targetName}`,
-        `Detected: ${topMatch?.ruleName || 'Confidential Data'}. Content prevented from leaking to AI model.`,
+        `Detected: ${topMatch?.ruleName || 'Confidential Data'}. Content prevented from reaching AI model.`,
       );
 
       if (this.onReportEvent) {

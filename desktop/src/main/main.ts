@@ -544,9 +544,9 @@ function setupIpcHandlers() {
     return {
       ...summary,
       stats: {
-        scannedCount: summary.stats.scannedCount + netStats.requestsInspected,
-        blockedCount: summary.stats.blockedCount + netStats.threatsBlocked,
-        allowedCount: summary.stats.allowedCount + netStats.allowedRequests,
+        scannedCount: summary.stats.scannedCount,
+        blockedCount: summary.stats.blockedCount,
+        allowedCount: summary.stats.allowedCount,
       },
       scheduleStatus: scheduleEvaluator.isProtectionActiveNow(),
       scheduleConfig: scheduleEvaluator.getConfig(),
