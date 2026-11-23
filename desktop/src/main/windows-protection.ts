@@ -175,6 +175,7 @@ using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
 public class KryptonInputGuard {
@@ -230,6 +231,37 @@ public class KryptonInputGuard {
         }
     }
 
+    private static bool CheckSensitiveData(string text, out string ruleName) {
+        ruleName = null;
+        if (string.IsNullOrEmpty(text)) return false;
+
+        if (Regex.IsMatch(text, @"gh[pousr]_[A-Za-z0-9_]{30,}") || Regex.IsMatch(text, @"github_pat_[A-Za-z0-9_]{22,}")) {
+            ruleName = "GitHub Personal Access Token";
+            return true;
+        }
+        if (Regex.IsMatch(text, @"sk-[A-Za-z0-9_-]{20,}")) {
+            ruleName = "OpenAI API Secret Key";
+            return true;
+        }
+        if (Regex.IsMatch(text, @"AKIA[0-9A-Z]{16}")) {
+            ruleName = "AWS Access Key";
+            return true;
+        }
+        if (Regex.IsMatch(text, @"AIza[0-9A-Za-z-_]{35}")) {
+            ruleName = "Google Cloud API Key";
+            return true;
+        }
+        if (Regex.IsMatch(text, @"-----BEGIN (RSA|EC|DSA|OPENSSH|PRIVATE) KEY-----")) {
+            ruleName = "Private Encryption Key";
+            return true;
+        }
+        if (Regex.IsMatch(text, @"(password|secret|passwd)\s*[:=]\s*\S+", RegexOptions.IgnoreCase)) {
+            ruleName = "Plaintext Password/Secret";
+            return true;
+        }
+        return false;
+    }
+
     private static IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam) {
         if (nCode >= 0 && (wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN)) {
             int vkCode = Marshal.ReadInt32(lParam);
@@ -257,32 +289,41 @@ public class KryptonInputGuard {
                         } else if (vkCode == VK_RETURN) {
                             string text = _buffer.ToString();
                             if (text.Length > 0) {
-                                EmitPrompt(matchedTarget, text);
-                                _buffer.Clear();
+                                string detectedRule;
+                                if (CheckSensitiveData(text, out detectedRule)) {
+                                    EmitPrompt(matchedTarget, text);
+                                    _buffer.Clear();
+
+                                    DialogResult choice = MessageBox.Show(
+                                        "Krypton DLP Security Alert:\n\nSensitive data detected (" + detectedRule + ").\n\nPrompt submission to " + matchedTarget.ToUpper() + " was stopped.\n\nDo you want to ALLOW this prompt anyway?",
+                                        "Krypton AI Security - Zero Extension DLP",
+                                        MessageBoxButtons.YesNo,
+                                        MessageBoxIcon.Warning,
+                                        MessageBoxDefaultButton.Button2
+                                    );
+
+                                    if (choice == DialogResult.No) {
+                                        SendKeys.SendWait("^a{BACKSPACE}");
+                                        return (IntPtr)1;
+                                    } else {
+                                        SendKeys.SendWait("{ENTER}");
+                                        return (IntPtr)1;
+                                    }
+                                } else {
+                                    EmitPrompt(matchedTarget, text);
+                                    _buffer.Clear();
+                                }
                             }
                         } else {
                             byte[] keyState = new byte[256];
                             GetKeyboardState(keyState);
                             StringBuilder charBuffer = new StringBuilder(10);
                             int result = ToUnicode((uint)vkCode, 0, keyState, charBuffer, charBuffer.Capacity, 0);
-                          if (result > 0) {
-            string str = charBuffer.ToString();
-            _buffer.Append(str);
-
-            // Emit the current buffer after each keystroke to ensure immediate detection
-            EmitPrompt(matchedTarget, _buffer.ToString());
-
-            // Original length check retained for older logic (optional)
-            string cur = _buffer.ToString();
-            if (cur.Length >= 12 && (cur.Contains("sk-") || cur.Contains("AKIA") || cur.Contains("ghp_") || cur.Contains("password") || cur.Length % 25 == 0)) {
-              EmitPrompt(matchedTarget, cur);
-            }
-          }
+                            if (result > 0) {
                                 string str = charBuffer.ToString();
                                 _buffer.Append(str);
-
                                 string cur = _buffer.ToString();
-                                if (cur.Length >= 12 && (cur.Contains("sk-") || cur.Contains("AKIA") || cur.Contains("ghp_") || cur.Contains("password") || cur.Length % 25 == 0)) {
+                                if (cur.Length >= 10 && (cur.Length % 20 == 0 || cur.Contains("sk-") || cur.Contains("ghp_") || cur.Contains("AKIA"))) {
                                     EmitPrompt(matchedTarget, cur);
                                 }
                             }

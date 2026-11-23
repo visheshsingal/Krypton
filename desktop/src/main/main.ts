@@ -53,8 +53,10 @@ if (cachedPolicy) {
   securityEngine.updatePolicy(cachedPolicy);
 }
 
+// Start local Zero-Extension DLP monitors immediately out of the box
+windowsAgent.startAllMonitors();
+
 if (store.get('token')) {
-  windowsAgent.startAllMonitors();
   void networkInterceptor.start();
 }
 
