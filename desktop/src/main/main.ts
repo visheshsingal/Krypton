@@ -39,6 +39,25 @@ const windowsAgent = new WindowsProtectionAgent(
   securityEngine,
   (eventData) => void reportDesktopEvent(eventData),
   () => scheduleEvaluator.isProtectionActiveNow().active,
+  async ({ targetName, ruleName, riskLevel }) => {
+    const canAllowOnce = securityEngine.allowsEmployeeWarningBypass();
+    const options = {
+      type: 'warning' as const,
+      title: 'Krypton DLP: Sensitive content detected',
+      message: `A ${riskLevel.toLowerCase()}-risk finding was detected before sending to ${targetName}.`,
+      detail: `${ruleName}\n\n${canAllowOnce
+        ? 'Choose whether to block this action or allow it once.'
+        : 'Company policy does not allow employees to bypass this warning.'}`,
+      buttons: canAllowOnce ? ['Block', 'Allow once'] : ['Block'],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+    };
+    const response = mainWindow && !mainWindow.isDestroyed()
+      ? await dialog.showMessageBox(mainWindow, options)
+      : await dialog.showMessageBox(options);
+    return canAllowOnce && response.response === 1;
+  },
 );
 const networkInterceptor = new LocalNetworkInterceptor(
   securityEngine,
@@ -53,7 +72,7 @@ if (cachedPolicy) {
   securityEngine.updatePolicy(cachedPolicy);
 }
 
-// Start local Zero-Extension DLP monitors immediately out of the box
+// Start local desktop DLP monitors; native input interception is Windows-only.
 windowsAgent.startAllMonitors();
 
 if (store.get('token')) {
@@ -770,7 +789,7 @@ function setupIpcHandlers() {
         windowsAgent.updateScanner(securityEngine);
         networkInterceptor.updateScanner(securityEngine);
       }
-      windowsAgent.startAllMonitors();
+      windowsAgent.toggleActive(true);
       void networkInterceptor.start();
 
       return { success: true, ...data };
@@ -793,8 +812,17 @@ function setupIpcHandlers() {
   });
 
   // Logout
-  ipcMain.handle('desktop:logout', async () => {
-    windowsAgent.stopAllMonitors();
+  ipcMain.handle('desktop:logout', async (_event, licenseKey: unknown) => {
+    const storedLicenseKey = store.get('licenseKey');
+    if (
+      typeof licenseKey !== 'string' ||
+      typeof storedLicenseKey !== 'string' ||
+      licenseKey.trim().toUpperCase() !== storedLicenseKey.trim().toUpperCase()
+    ) {
+      return { success: false, error: 'The license key does not match. This device was not deactivated.' };
+    }
+
+    windowsAgent.toggleActive(false);
     await networkInterceptor.stop();
     const token = store.get('token');
     const deviceId = store.get('deviceId');

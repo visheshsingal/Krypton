@@ -47,6 +47,7 @@ interface ProtectionSummary {
   active: boolean;
   platform: string;
   noExtensionRequired: boolean;
+  inputMonitorReady: boolean;
   stats: {
     scannedCount: number;
     blockedCount: number;
@@ -70,9 +71,14 @@ export default function App() {
   const [showPassword, setShowPassword] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [showDeactivateDialog, setShowDeactivateDialog] = useState(false);
+  const [deactivationKey, setDeactivationKey] = useState('');
+  const [deactivationError, setDeactivationError] = useState<string | null>(null);
+  const [deactivationLoading, setDeactivationLoading] = useState(false);
 
   // Protection & Stats
   const [protectionActive, setProtectionActive] = useState(true);
+  const [inputMonitorReady, setInputMonitorReady] = useState(false);
   const [stats, setStats] = useState({ scannedCount: 0, blockedCount: 0, allowedCount: 0 });
   const [recentEvents, setRecentEvents] = useState<SecurityEventItem[]>([]);
   const [deviceInfo, setDeviceInfo] = useState<{ deviceId?: string; osVersion?: string; appVersion?: string }>({});
@@ -131,6 +137,7 @@ export default function App() {
       const summary: ProtectionSummary = await bridge.getWindowsProtectionSummary();
       if (summary) {
         setProtectionActive(summary.active);
+        setInputMonitorReady(summary.inputMonitorReady === true);
         setStats(summary.stats || { scannedCount: 0, blockedCount: 0, allowedCount: 0 });
         if (summary.recentEvents) {
           setRecentEvents(summary.recentEvents);
@@ -174,11 +181,44 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    if (!bridge?.logout) return;
-    await bridge.logout();
-    setIsActivated(false);
-    setStoredState(null);
-    setPasswordInput('');
+    setDeactivationKey('');
+    setDeactivationError(null);
+    setShowDeactivateDialog(true);
+  };
+
+  const confirmDeactivation = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!bridge?.logout || !deactivationKey.trim()) {
+      setDeactivationError('Enter your license key to deactivate this device.');
+      return;
+    }
+
+    setDeactivationLoading(true);
+    setDeactivationError(null);
+    try {
+      const result = await bridge.logout(deactivationKey);
+      if (!result?.success) {
+        setDeactivationError(result?.error || 'Could not verify the license key. This device was not deactivated.');
+        return;
+      }
+      setShowDeactivateDialog(false);
+      setIsActivated(false);
+      setStoredState(null);
+      setPasswordInput('');
+    } catch (error) {
+      setDeactivationError(error instanceof Error ? error.message : 'Could not deactivate this device.');
+    } finally {
+      setDeactivationLoading(false);
+    }
+  };
+
+  const handleToggleProtection = async () => {
+    if (!bridge?.toggleWindowsProtection) return;
+    const result = await bridge.toggleWindowsProtection(!protectionActive);
+    if (result?.success) {
+      setProtectionActive(result.active);
+      await refreshSummary();
+    }
   };
 
   const handleTestScan = async () => {
@@ -324,7 +364,7 @@ export default function App() {
           {/* Policy Information */}
           <div className="mt-6 rounded-xl border border-slate-800/80 bg-slate-950/50 p-3 text-center">
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              ⚡ <strong className="text-slate-200">Zero-Extension DLP:</strong> Intercepts sensitive prompts and clipboard data across all browsers automatically. All incidents are logged to company security dashboard.
+              ⚡ <strong className="text-slate-200">Windows device guard:</strong> On supported Windows devices, Krypton locally checks text pasted or submitted in enabled AI platforms using keyboard, mouse, and accessibility hooks. Browser titles and accessibility support affect coverage; this is not guaranteed for every app or screen.
             </p>
           </div>
         </div>
@@ -390,21 +430,28 @@ export default function App() {
               </div>
               <div>
                 <h2 className="text-lg font-bold text-white">
-                  Real-Time AI DLP Protection Active
+                  Real-Time AI DLP Protection {protectionActive && inputMonitorReady ? 'Active' : 'Not Ready'}
                 </h2>
                 <p className="mt-0.5 text-xs text-slate-400">
-                  Zero-extension keystroke and clipboard guard running across all browsers.
+                  {protectionActive && inputMonitorReady
+                    ? 'Windows accessibility and keyboard guard is ready for enabled AI platforms; prompt content is scanned locally.'
+                    : protectionActive
+                      ? 'The native Windows input guard is unavailable or still starting; do not treat this device as protected.'
+                      : 'Protection is paused by the local device operator.'}
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3.5 py-2">
-              <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-              <div className="text-left">
-                <p className="text-[10px] font-semibold text-emerald-300 uppercase tracking-wider">Guard Active</p>
-                <p className="text-[10px] text-slate-400">Zero-Extension DLP</p>
-              </div>
-            </div>
+            <button
+              onClick={handleToggleProtection}
+              className={`shrink-0 rounded-xl border px-3.5 py-2 text-xs font-bold transition ${
+                protectionActive
+                  ? 'border-rose-500/30 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20'
+                  : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
+              }`}
+            >
+              {protectionActive ? 'Pause Protection' : 'Activate Protection'}
+            </button>
           </div>
         </div>
 
@@ -413,10 +460,14 @@ export default function App() {
           <div className="rounded-2xl border border-slate-800/80 bg-[#0a0f1d] p-5">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-slate-400">Protection Status</span>
-              <Activity className="h-4 w-4 text-emerald-400" />
+              <Activity className={`h-4 w-4 ${protectionActive && inputMonitorReady ? 'text-emerald-400' : 'text-amber-400'}`} />
             </div>
-            <p className="mt-2 text-2xl font-bold text-emerald-400">Guarding</p>
-            <p className="mt-1 text-[11px] text-slate-500">Live endpoint monitoring active</p>
+            <p className={`mt-2 text-2xl font-bold ${protectionActive && inputMonitorReady ? 'text-emerald-400' : 'text-amber-400'}`}>
+              {protectionActive && inputMonitorReady ? 'Guarding' : 'Not Ready'}
+            </p>
+            <p className="mt-1 text-[11px] text-slate-500">
+              {inputMonitorReady ? 'Windows OS input guard active' : 'Native input guard unavailable'}
+            </p>
           </div>
 
           <div className="rounded-2xl border border-slate-800/80 bg-[#0a0f1d] p-5">
@@ -431,10 +482,12 @@ export default function App() {
           <div className="rounded-2xl border border-slate-800/80 bg-[#0a0f1d] p-5">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-slate-400">Security Engine</span>
-              <CheckCircle2 className="h-4 w-4 text-sky-400" />
+              {inputMonitorReady
+                ? <CheckCircle2 className="h-4 w-4 text-sky-400" />
+                : <AlertTriangle className="h-4 w-4 text-amber-400" />}
             </div>
-            <p className="mt-2 text-2xl font-bold text-white">Online</p>
-            <p className="mt-1 text-[11px] text-slate-500">Native OS hook & clipboard guard</p>
+            <p className="mt-2 text-2xl font-bold text-white">{inputMonitorReady ? 'Ready' : 'Unavailable'}</p>
+            <p className="mt-1 text-[11px] text-slate-500">Windows keyboard, mouse & accessibility guard</p>
           </div>
         </div>
 
@@ -565,6 +618,68 @@ export default function App() {
           )}
         </section>
       </main>
+
+      {showDeactivateDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
+          <form
+            onSubmit={confirmDeactivation}
+            className="w-full max-w-md rounded-2xl border border-slate-700 bg-[#0b1220] p-6 shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="deactivation-title"
+          >
+            <div className="mb-5 flex items-start gap-3">
+              <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 p-2 text-rose-300">
+                <Lock className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 id="deactivation-title" className="text-base font-bold text-white">Confirm device deactivation</h2>
+                <p className="mt-1 text-xs leading-relaxed text-slate-400">
+                  Enter the license key assigned to this device to continue. Protection will stop after verification.
+                </p>
+              </div>
+            </div>
+
+            <label htmlFor="deactivation-license-key" className="mb-1.5 block text-xs font-medium text-slate-300">
+              License key
+            </label>
+            <input
+              id="deactivation-license-key"
+              type="password"
+              autoComplete="off"
+              autoFocus
+              value={deactivationKey}
+              onChange={(event) => {
+                setDeactivationKey(event.target.value);
+                setDeactivationError(null);
+              }}
+              placeholder="Enter license key"
+              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 font-mono text-sm text-white outline-none focus:border-sky-500"
+            />
+            {deactivationError && (
+              <p className="mt-2 text-xs text-rose-300" role="alert">{deactivationError}</p>
+            )}
+
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowDeactivateDialog(false)}
+                disabled={deactivationLoading}
+                className="rounded-xl border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-300 transition hover:bg-slate-800 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={deactivationLoading || !deactivationKey.trim()}
+                className="rounded-xl bg-rose-500 px-4 py-2 text-xs font-bold text-white transition hover:bg-rose-400 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {deactivationLoading ? 'Verifying…' : 'Verify & Deactivate'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }

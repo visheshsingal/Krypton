@@ -32,6 +32,7 @@ describe('WindowsProtectionAgent', () => {
     const summary = agent.getSummary();
     expect(summary.active).toBe(true);
     expect(summary.noExtensionRequired).toBe(true);
+    expect(summary.inputMonitorReady).toBe(false);
     expect(summary.targets.length).toBe(5);
     expect(summary.targets.map((t) => t.id)).toEqual([
       'chatgpt',
@@ -79,6 +80,31 @@ describe('WindowsProtectionAgent', () => {
     expect(summary.stats.allowedCount).toBe(1);
     expect(summary.recentEvents[0].targetName).toContain('ChatGPT');
     expect(summary.recentEvents[0].actionTaken).toBe('block');
+  });
+
+  it('does not scan a target platform after its protection is disabled', () => {
+    agent.setTargetEnabled('chatgpt', false);
+
+    const result = agent.inspectTypedPrompt(
+      'sk-proj-1234567890abcdef1234567890abcdef1234567890abcdef',
+      'ChatGPT',
+    );
+
+    expect(result.blocked).toBe(false);
+    expect(result.result.explanation).toBe('Target platform is disabled.');
+    expect(agent.getSummary().stats.scannedCount).toBe(0);
+  });
+
+  it('keeps warning-level prompts pending for an allow-once or block decision', () => {
+    const warningAgent = new WindowsProtectionAgent(new PromptSecurityEngine());
+
+    const prompt = warningAgent.inspectTypedPrompt('Contact test@example.com', 'ChatGPT');
+    const paste = warningAgent.inspectClipboard('Contact test@example.com', 'ChatGPT');
+
+    expect(prompt.result.action).toBe('warn');
+    expect(paste.result.action).toBe('warn');
+    expect(warningAgent.getSummary().stats.allowedCount).toBe(0);
+    warningAgent.stopAllMonitors();
   });
 
   it('handles startAllMonitors and stopAllMonitors lifecycle cleanly', () => {

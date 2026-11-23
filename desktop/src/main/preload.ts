@@ -32,7 +32,7 @@ export interface KryptonDesktopBridge {
   heartbeat: () => Promise<any>;
   scanPrompt: (prompt: string) => Promise<any>;
   reportEvent: (eventData: any) => Promise<any>;
-  logout: () => Promise<{ success: boolean; warning?: string }>;
+  logout: (licenseKey: string) => Promise<{ success: boolean; warning?: string; error?: string }>;
   openExternal: (url: string) => Promise<void>;
   getAppVersion: () => Promise<string>;
   checkForUpdates: () => Promise<{
@@ -65,7 +65,7 @@ const bridge: KryptonDesktopBridge = {
   heartbeat: () => ipcRenderer.invoke('desktop:heartbeat'),
   scanPrompt: (prompt) => ipcRenderer.invoke('desktop:scan-prompt', prompt),
   reportEvent: (eventData) => ipcRenderer.invoke('desktop:report-event', eventData),
-  logout: () => ipcRenderer.invoke('desktop:logout'),
+  logout: (licenseKey) => ipcRenderer.invoke('desktop:logout', licenseKey),
   openExternal: (url) => ipcRenderer.invoke('desktop:open-external', url),
   getAppVersion: () => ipcRenderer.invoke('desktop:get-version'),
   checkForUpdates: () => ipcRenderer.invoke('desktop:check-for-updates'),
