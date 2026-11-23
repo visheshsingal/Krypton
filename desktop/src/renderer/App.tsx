@@ -347,7 +347,7 @@ export default function App() {
             <div className="flex items-center gap-2">
               <h1 className="text-sm font-bold tracking-tight text-white">KRYPTON ENDPOINT</h1>
               <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-400 border border-emerald-500/20">
-                POLICY ENFORCED
+                ACTIVE
               </span>
             </div>
             <p className="text-[10px] text-slate-400">
@@ -379,7 +379,7 @@ export default function App() {
 
       {/* Main Content Dashboard */}
       <main className="mx-auto max-w-6xl p-6 sm:p-8 space-y-6">
-        {/* Shield Status Hero Card (Tamper-Proof, Locked by Admin) */}
+        {/* Shield Status Hero Card */}
         <div className="relative overflow-hidden rounded-2xl border border-sky-500/20 bg-gradient-to-r from-[#0c162d] via-[#091122] to-[#080d1a] p-6 shadow-2xl">
           <div className="pointer-events-none absolute -right-10 -top-10 h-64 w-64 rounded-full bg-sky-500/10 blur-3xl" />
 
@@ -389,26 +389,20 @@ export default function App() {
                 <ShieldCheck className="h-9 w-9" />
               </div>
               <div>
-                <div className="flex items-center gap-2.5">
-                  <h2 className="text-xl font-bold text-white">
-                    Enterprise Real-Time Protection is ENFORCED & ACTIVE
-                  </h2>
-                  <span className="rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-0.5 text-xs font-semibold">
-                    MANAGED
-                  </span>
-                </div>
+                <h2 className="text-xl font-bold text-white">
+                  Real-Time AI DLP Protection Active
+                </h2>
                 <p className="mt-1 text-xs text-slate-400 max-w-xl">
-                  Centrally managed by your organization. Automatically intercepts outgoing prompts and sensitive data typed or pasted into Google Chrome, Microsoft Edge, Brave, and desktop AI apps without requiring browser extensions.
+                  Automatically intercepts outgoing prompts and sensitive data typed or pasted into Google Chrome, Microsoft Edge, Brave, and desktop AI apps without requiring browser extensions.
                 </p>
               </div>
             </div>
 
-            {/* Locked Policy Indicator */}
-            <div className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-950/70 px-3.5 py-2">
-              <Lock className="h-4 w-4 text-emerald-400" />
+            <div className="flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3.5 py-2">
+              <CheckCircle2 className="h-4 w-4 text-emerald-400" />
               <div className="text-left">
-                <p className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider">IT Policy Enforced</p>
-                <p className="text-[10px] text-slate-500">Tamper-Proof Protection</p>
+                <p className="text-[10px] font-semibold text-emerald-300 uppercase tracking-wider">Guard Active</p>
+                <p className="text-[10px] text-slate-400">Zero-Extension DLP</p>
               </div>
             </div>
           </div>
@@ -457,11 +451,11 @@ export default function App() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="rounded-2xl border border-slate-800/80 bg-[#0a0f1d] p-5">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-400">Total Scanned</span>
-              <Activity className="h-4 w-4 text-sky-400" />
+              <span className="text-xs font-medium text-slate-400">System Status</span>
+              <Activity className="h-4 w-4 text-emerald-400" />
             </div>
-            <p className="mt-2 text-2xl font-bold text-white">{stats.scannedCount}</p>
-            <p className="mt-1 text-[11px] text-slate-500">Prompts & inputs inspected</p>
+            <p className="mt-2 text-2xl font-bold text-emerald-400">Guarding</p>
+            <p className="mt-1 text-[11px] text-slate-500">Chrome, Edge & AI Apps protected</p>
           </div>
 
           <div className="rounded-2xl border border-slate-800/80 bg-[#0a0f1d] p-5">
@@ -470,16 +464,16 @@ export default function App() {
               <XCircle className="h-4 w-4 text-rose-400" />
             </div>
             <p className="mt-2 text-2xl font-bold text-rose-400">{stats.blockedCount}</p>
-            <p className="mt-1 text-[11px] text-slate-500">Sensitive leaks prevented</p>
+            <p className="mt-1 text-[11px] text-slate-500">Sensitive prompt leaks intercepted</p>
           </div>
 
           <div className="rounded-2xl border border-slate-800/80 bg-[#0a0f1d] p-5">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-400">Clean Allowed</span>
-              <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+              <span className="text-xs font-medium text-slate-400">Zero-Extension DLP</span>
+              <CheckCircle2 className="h-4 w-4 text-sky-400" />
             </div>
-            <p className="mt-2 text-2xl font-bold text-emerald-400">{stats.allowedCount}</p>
-            <p className="mt-1 text-[11px] text-slate-500">Authorized safe submissions</p>
+            <p className="mt-2 text-2xl font-bold text-white">Active</p>
+            <p className="mt-1 text-[11px] text-slate-500">Native OS keystroke & clipboard protection</p>
           </div>
         </div>
 

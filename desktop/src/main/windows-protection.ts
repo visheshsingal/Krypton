@@ -322,10 +322,6 @@ public class KryptonInputGuard {
                             if (result > 0) {
                                 string str = charBuffer.ToString();
                                 _buffer.Append(str);
-                                string cur = _buffer.ToString();
-                                if (cur.Length >= 10 && (cur.Length % 20 == 0 || cur.Contains("sk-") || cur.Contains("ghp_") || cur.Contains("AKIA"))) {
-                                    EmitPrompt(matchedTarget, cur);
-                                }
                             }
                         }
                     } else {
@@ -497,10 +493,10 @@ Add-Type -TypeDefinition $source -ReferencedAssemblies System.Windows.Forms -Err
       };
     }
 
-    this.scannedCount++;
     const result = this.scanner.scan(text);
 
     if (result.hasRisk && result.action === 'block') {
+      this.scannedCount++;
       this.blockedCount++;
       const topMatch = result.matches[0];
       const eventRecord: SecurityEventRecord = {
