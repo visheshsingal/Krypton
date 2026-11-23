@@ -1,16 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import {
+  ArrowDown,
+  ArrowUpRight,
   ShieldCheck,
-  ShieldAlert,
   Globe,
-  CheckCircle2,
-  XCircle,
   RefreshCw,
   Terminal,
-  Activity,
-  Keyboard,
-  ClipboardCheck,
-  Flame,
+  Fingerprint,
   KeyRound,
   Mail,
   Lock,
@@ -18,6 +14,8 @@ import {
   EyeOff,
   AlertTriangle,
   LogOut,
+  ScanLine,
+  Sparkles,
 } from 'lucide-react';
 
 interface StoredState {
@@ -48,11 +46,6 @@ interface ProtectionSummary {
   platform: string;
   noExtensionRequired: boolean;
   inputMonitorReady: boolean;
-  stats: {
-    scannedCount: number;
-    blockedCount: number;
-    allowedCount: number;
-  };
   recentEvents: SecurityEventItem[];
 }
 
@@ -79,11 +72,11 @@ export default function App() {
   // Protection & Stats
   const [protectionActive, setProtectionActive] = useState(true);
   const [inputMonitorReady, setInputMonitorReady] = useState(false);
-  const [stats, setStats] = useState({ scannedCount: 0, blockedCount: 0, allowedCount: 0 });
   const [recentEvents, setRecentEvents] = useState<SecurityEventItem[]>([]);
   const [deviceInfo, setDeviceInfo] = useState<{ deviceId?: string; osVersion?: string; appVersion?: string; platform?: string }>({});
   const [managedBrowserLoading, setManagedBrowserLoading] = useState<'chrome' | 'edge' | null>(null);
   const [managedBrowserError, setManagedBrowserError] = useState<string | null>(null);
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
 
   // Interactive Live Scanner Tester
   const [testInput, setTestInput] = useState('');
@@ -140,7 +133,6 @@ export default function App() {
       if (summary) {
         setProtectionActive(summary.active);
         setInputMonitorReady(summary.inputMonitorReady === true);
-        setStats(summary.stats || { scannedCount: 0, blockedCount: 0, allowedCount: 0 });
         if (summary.recentEvents) {
           setRecentEvents(summary.recentEvents);
         }
@@ -283,400 +275,385 @@ export default function App() {
   // =========================================================================
   if (!isActivated) {
     return (
-      <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#070b14] px-4 font-sans text-slate-100 select-none">
-        {/* Ambient glow */}
-        <div className="pointer-events-none absolute -top-40 left-1/2 h-[450px] w-[600px] -translate-x-1/2 rounded-full bg-sky-500/10 blur-[130px]" />
-        <div className="pointer-events-none absolute -bottom-40 right-10 h-[350px] w-[450px] rounded-full bg-indigo-500/10 blur-[120px]" />
-
-        <div className="relative w-full max-w-md rounded-2xl border border-slate-800/90 bg-[#0c1322]/95 p-8 shadow-2xl shadow-black/80 backdrop-blur-xl">
-          {/* Logo & Headline */}
-          <div className="text-center">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-tr from-sky-500 via-indigo-500 to-teal-400 shadow-lg shadow-sky-500/25">
-              <ShieldCheck className="h-8 w-8 text-white" />
+      <div className="relative min-h-screen overflow-hidden bg-[#080b10] font-sans text-slate-100">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_18%_22%,rgba(14,165,233,0.12),transparent_35%),radial-gradient(ellipse_at_82%_78%,rgba(20,184,166,0.08),transparent_35%)]" />
+        <div className="relative mx-auto grid min-h-screen max-w-7xl items-center gap-12 px-6 py-10 lg:grid-cols-[1.05fr_0.95fr] lg:px-12">
+          <section className="max-w-2xl">
+            <div className="mb-12 flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-300/10 text-cyan-200">
+                <ShieldCheck className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-xs font-bold tracking-[0.24em] text-white">KRYPTON / SENTINEL</p>
+                <p className="mt-1 text-[10px] tracking-[0.18em] text-slate-500">ENDPOINT PROMPT DEFENSE</p>
+              </div>
             </div>
-            <h1 className="mt-4 text-2xl font-bold tracking-tight text-white">Krypton Enterprise</h1>
-            <p className="mt-1 text-xs text-slate-400">
-              Corporate AI Data Loss Prevention · Endpoint Activation
+
+            <p className="mb-5 flex items-center gap-2 text-[11px] font-semibold tracking-[0.22em] text-cyan-300 uppercase">
+              <span className="h-px w-8 bg-cyan-400" /> A control point before AI
             </p>
-          </div>
-
-          {authError && (
-            <div className="mt-5 flex items-start gap-2.5 rounded-xl border border-rose-500/20 bg-rose-500/10 p-3.5 text-xs text-rose-300">
-              <AlertTriangle className="h-4 w-4 shrink-0 text-rose-400 mt-0.5" />
-              <span>{authError}</span>
-            </div>
-          )}
-
-          {/* Form */}
-          <form onSubmit={handleLogin} className="mt-6 space-y-4">
-            <div>
-              <label className="text-[11px] font-semibold tracking-wider text-slate-400 uppercase">
-                Company License Key
-              </label>
-              <div className="relative mt-1.5">
-                <KeyRound className="absolute top-3 left-3 h-4 w-4 text-slate-500" />
-                <input
-                  type="text"
-                  required
-                  placeholder="KRP-XXXX-XXXX-XXXX"
-                  value={licenseKeyInput}
-                  onChange={(e) => setLicenseKeyInput(e.target.value)}
-                  className="w-full rounded-xl border border-slate-800 bg-slate-950/70 py-2.5 pr-4 pl-10 text-sm font-mono text-white placeholder-slate-600 transition focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="text-[11px] font-semibold tracking-wider text-slate-400 uppercase">
-                Employee Email
-              </label>
-              <div className="relative mt-1.5">
-                <Mail className="absolute top-3 left-3 h-4 w-4 text-slate-500" />
-                <input
-                  type="email"
-                  required
-                  placeholder="employee@company.com"
-                  value={emailInput}
-                  onChange={(e) => setEmailInput(e.target.value)}
-                  className="w-full rounded-xl border border-slate-800 bg-slate-950/70 py-2.5 pr-4 pl-10 text-sm text-white placeholder-slate-600 transition focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="text-[11px] font-semibold tracking-wider text-slate-400 uppercase">
-                Password
-              </label>
-              <div className="relative mt-1.5">
-                <Lock className="absolute top-3 left-3 h-4 w-4 text-slate-500" />
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  placeholder="••••••••••••"
-                  value={passwordInput}
-                  onChange={(e) => setPasswordInput(e.target.value)}
-                  className="w-full rounded-xl border border-slate-800 bg-slate-950/70 py-2.5 pr-10 pl-10 text-sm text-white placeholder-slate-600 transition focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute top-2.5 right-3 text-slate-500 hover:text-slate-300"
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={authLoading}
-              className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 via-sky-600 to-indigo-600 py-3 text-sm font-semibold text-white shadow-lg shadow-sky-500/25 transition hover:brightness-110 active:scale-[0.99] disabled:opacity-50"
-            >
-              {authLoading ? (
-                <>
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                  Verifying License & Activating…
-                </>
-              ) : (
-                'Activate & Enforce DLP Protection'
-              )}
-            </button>
-          </form>
-
-          {/* Policy Information */}
-          <div className="mt-6 rounded-xl border border-slate-800/80 bg-slate-950/50 p-3 text-center">
-            <p className="text-[11px] text-slate-400 leading-relaxed">
-              ⚡ <strong className="text-slate-200">Windows device guard:</strong> On supported Windows devices, Krypton locally checks text pasted or submitted in enabled AI platforms using keyboard, mouse, and accessibility hooks. Browser titles and accessibility support affect coverage; this is not guaranteed for every app or screen.
+            <h1 className="max-w-xl text-5xl font-semibold leading-[0.98] tracking-[-0.06em] text-white sm:text-6xl xl:text-7xl">
+              Keep the prompt.
+              <span className="mt-2 block bg-gradient-to-r from-cyan-200 via-sky-400 to-teal-300 bg-clip-text text-transparent">
+                Keep control.
+              </span>
+            </h1>
+            <p className="mt-7 max-w-lg text-sm leading-7 text-slate-400 sm:text-base">
+              Inspect sensitive text locally, apply company policy, and make the decision before a supported prompt leaves the device.
             </p>
-          </div>
+
+            <div className="mt-10 grid max-w-xl grid-cols-3 gap-3 border-y border-white/10 py-5">
+              <div>
+                <p className="text-[10px] font-semibold tracking-[0.16em] text-slate-500">01 / INSPECT</p>
+                <p className="mt-2 text-xs font-medium text-slate-200">Prompt text</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold tracking-[0.16em] text-slate-500">02 / EVALUATE</p>
+                <p className="mt-2 text-xs font-medium text-slate-200">Local policy</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold tracking-[0.16em] text-slate-500">03 / DECIDE</p>
+                <p className="mt-2 text-xs font-medium text-slate-200">Allow or block</p>
+              </div>
+            </div>
+            <p className="mt-5 max-w-xl text-[11px] leading-5 text-slate-500">
+              Coverage depends on platform and app accessibility. Extension-free request inspection is available only in Krypton-managed Chrome/Edge profiles on Windows; it does not cover every browser window or application.
+            </p>
+          </section>
+
+          <section className="mx-auto w-full max-w-md rounded-2xl border border-white/10 bg-[#0d121a]/90 p-6 shadow-2xl shadow-black/40 backdrop-blur-xl sm:p-8">
+            <div className="mb-7 flex items-start justify-between">
+              <div>
+                <p className="text-[10px] font-bold tracking-[0.2em] text-cyan-300">DEVICE ENROLLMENT</p>
+                <h2 className="mt-2 text-xl font-semibold text-white">Activate this endpoint</h2>
+                <p className="mt-1 text-xs text-slate-500">Use the credentials issued by your company.</p>
+              </div>
+              <Fingerprint className="h-5 w-5 text-slate-500" />
+            </div>
+
+            {authError && (
+              <div className="mb-5 flex items-start gap-2.5 rounded-xl border border-rose-500/20 bg-rose-500/10 p-3.5 text-xs text-rose-300">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
+                <span>{authError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div>
+                <label htmlFor="license-key" className="text-[10px] font-semibold tracking-[0.16em] text-slate-400 uppercase">
+                  Company license key
+                </label>
+                <div className="relative mt-2">
+                  <KeyRound className="absolute top-3 left-3 h-4 w-4 text-slate-500" />
+                  <input
+                    id="license-key"
+                    type="text"
+                    required
+                    placeholder="KRP-XXXX-XXXX-XXXX"
+                    value={licenseKeyInput}
+                    onChange={(event) => setLicenseKeyInput(event.target.value)}
+                    className="w-full rounded-lg border border-white/10 bg-[#080b10] py-3 pr-4 pl-10 text-sm font-mono text-white placeholder-slate-700 outline-none transition focus:border-cyan-400/60"
+                  />
+                </div>
+              </div>
+              <div>
+                <label htmlFor="employee-email" className="text-[10px] font-semibold tracking-[0.16em] text-slate-400 uppercase">
+                  Employee email
+                </label>
+                <div className="relative mt-2">
+                  <Mail className="absolute top-3 left-3 h-4 w-4 text-slate-500" />
+                  <input
+                    id="employee-email"
+                    type="email"
+                    required
+                    placeholder="you@company.com"
+                    value={emailInput}
+                    onChange={(event) => setEmailInput(event.target.value)}
+                    className="w-full rounded-lg border border-white/10 bg-[#080b10] py-3 pr-4 pl-10 text-sm text-white placeholder-slate-700 outline-none transition focus:border-cyan-400/60"
+                  />
+                </div>
+              </div>
+              <div>
+                <label htmlFor="employee-password" className="text-[10px] font-semibold tracking-[0.16em] text-slate-400 uppercase">
+                  Account password
+                </label>
+                <div className="relative mt-2">
+                  <Lock className="absolute top-3 left-3 h-4 w-4 text-slate-500" />
+                  <input
+                    id="employee-password"
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    placeholder="Enter your password"
+                    value={passwordInput}
+                    onChange={(event) => setPasswordInput(event.target.value)}
+                    className="w-full rounded-lg border border-white/10 bg-[#080b10] py-3 pr-11 pl-10 text-sm text-white placeholder-slate-700 outline-none transition focus:border-cyan-400/60"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    className="absolute top-3 right-3 text-slate-500 hover:text-slate-300"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+              <button
+                type="submit"
+                disabled={authLoading}
+                className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg bg-cyan-300 px-4 py-3 text-sm font-bold text-slate-950 transition hover:bg-cyan-200 disabled:cursor-wait disabled:opacity-60"
+              >
+                {authLoading ? <><RefreshCw className="h-4 w-4 animate-spin" /> Activating endpoint…</> : <>Activate endpoint <ArrowUpRight className="h-4 w-4" /></>}
+              </button>
+            </form>
+            <p className="mt-5 text-center text-[10px] leading-5 text-slate-600">
+              Activation validates this device and loads its company security policy.
+            </p>
+          </section>
         </div>
       </div>
     );
   }
 
   // =========================================================================
-  // VIEW 2: PROFESSIONAL ENTERPRISE ENDPOINT DASHBOARD (Tamper-Proof)
+  // VIEW 2: KRYPTON SENTINEL CONTROL SURFACE
   // =========================================================================
   return (
-    <div className="min-h-screen bg-[#070b14] font-sans text-slate-100 select-none">
-      {/* Top Header */}
-      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-800/80 bg-[#090e1c]/90 px-6 py-3.5 backdrop-blur-md">
+    <div className="min-h-screen overflow-hidden bg-[#080b10] font-sans text-slate-100">
+      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_at_16%_38%,rgba(8,145,178,0.11),transparent_35%),radial-gradient(ellipse_at_86%_4%,rgba(13,148,136,0.09),transparent_32%)]" />
+      <header className="relative z-10 flex min-h-16 items-center justify-between border-b border-white/[0.07] bg-[#080b10]/80 px-5 backdrop-blur-xl sm:px-8">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-sky-500 via-indigo-500 to-teal-400 shadow-md shadow-sky-500/20">
-            <ShieldCheck className="h-5 w-5 text-white" />
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-cyan-300/20 bg-cyan-300/10 text-cyan-200">
+            <ShieldCheck className="h-5 w-5" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-sm font-bold tracking-tight text-white">KRYPTON ENDPOINT</h1>
-              <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-400 border border-emerald-500/20">
-                ACTIVE
-              </span>
-            </div>
-            <p className="text-[10px] text-slate-400">
-              Device: {deviceInfo.deviceId || storedState?.deviceId || 'WIN-ENDPOINT'} · Agent v{deviceInfo.appVersion || '1.0.1'}
-            </p>
+            <p className="text-xs font-bold tracking-[0.18em] text-white">KRYPTON / SENTINEL</p>
+            <p className="mt-0.5 text-[9px] tracking-[0.16em] text-slate-500">ENDPOINT CONTROL SURFACE</p>
           </div>
         </div>
-
-        {/* User Badge & Logout */}
-        <div className="flex items-center gap-4">
-          <div className="text-right">
-            <p className="text-xs font-medium text-white">{storedState?.user?.email || 'Protected Employee'}</p>
-            <span className="inline-flex items-center gap-1.5 text-[10px] text-emerald-400 font-semibold">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              Company License Active
-            </span>
+        <div className="flex items-center gap-3 sm:gap-5">
+          <div className="hidden text-right sm:block">
+            <p className="text-[11px] font-medium text-slate-200">{storedState?.user?.email || 'Protected employee'}</p>
+            <p className="mt-0.5 text-[9px] tracking-wider text-teal-300">LICENSE VERIFIED</p>
           </div>
-
           <button
             onClick={handleLogout}
-            title="Log out of this device"
-            className="flex items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-400 transition hover:border-rose-500/40 hover:bg-rose-500/10 hover:text-rose-300"
+            className="flex items-center gap-2 rounded-md border border-white/10 px-3 py-2 text-[10px] font-semibold tracking-wider text-slate-400 transition hover:border-rose-400/40 hover:text-rose-300"
           >
             <LogOut className="h-3.5 w-3.5" />
-            <span>Deactivate</span>
+            DEACTIVATE
           </button>
         </div>
       </header>
 
-      {/* Main Content Dashboard */}
-      <main className="mx-auto max-w-5xl p-6 sm:p-8 space-y-6">
-        {/* Shield Status Hero Card */}
-        <div className="relative overflow-hidden rounded-2xl border border-sky-500/20 bg-gradient-to-r from-[#0c162d] via-[#091122] to-[#080d1a] p-6 shadow-2xl">
-          <div className="pointer-events-none absolute -right-10 -top-10 h-64 w-64 rounded-full bg-sky-500/10 blur-3xl" />
+      <main className="relative mx-auto max-w-7xl px-5 py-8 sm:px-8 sm:py-12">
+        <section className="relative isolate overflow-hidden rounded-2xl border border-white/10 bg-[#0c121a] shadow-[0_30px_120px_-45px_rgba(6,182,212,0.28)]">
+          <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(148,163,184,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.035)_1px,transparent_1px)] bg-[size:48px_48px] [mask-image:linear-gradient(to_bottom_right,black,transparent_82%)]" />
+          <div className="pointer-events-none absolute -right-28 -top-40 h-[480px] w-[480px] rounded-full border border-cyan-200/[0.07]" />
+          <div className="pointer-events-none absolute -right-12 -top-24 h-[340px] w-[340px] rounded-full border border-cyan-200/[0.08]" />
 
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-            <div className="flex items-center gap-4">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-emerald-500/30 bg-emerald-500/15 text-emerald-400 shadow-lg shadow-emerald-500/20">
-                <ShieldCheck className="h-8 w-8" />
+          <div className="relative grid min-h-[610px] gap-8 p-6 sm:p-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center lg:p-14">
+            <div className="max-w-2xl">
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-3 py-1.5">
+                <span className={`h-1.5 w-1.5 rounded-full ${protectionActive && inputMonitorReady ? 'bg-teal-300 shadow-[0_0_12px_rgba(94,234,212,0.8)]' : 'bg-amber-300'}`} />
+                <span className="text-[9px] font-bold tracking-[0.18em] text-slate-300">
+                  {protectionActive && inputMonitorReady ? 'GUARD ONLINE' : protectionActive ? 'GUARD NOT READY' : 'GUARD PAUSED'}
+                </span>
+                <span className="mx-1 h-3 w-px bg-white/10" />
+                <span className="text-[9px] tracking-wider text-slate-500">LOCAL POLICY ENGINE</span>
               </div>
-              <div>
-                <h2 className="text-lg font-bold text-white">
-                  Real-Time AI DLP Protection {protectionActive && inputMonitorReady ? 'Active' : 'Not Ready'}
-                </h2>
-                <p className="mt-0.5 text-xs text-slate-400">
-                  {protectionActive && inputMonitorReady
-                    ? 'Windows accessibility and keyboard guard is ready for enabled AI platforms; prompt content is scanned locally.'
-                    : protectionActive
-                      ? 'The native Windows input guard is unavailable or still starting; do not treat this device as protected.'
-                      : 'Protection is paused by the local device operator.'}
-                </p>
-              </div>
-            </div>
 
-            <button
-              onClick={handleToggleProtection}
-              className={`shrink-0 rounded-xl border px-3.5 py-2 text-xs font-bold transition ${
-                protectionActive
-                  ? 'border-rose-500/30 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20'
-                  : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
-              }`}
-            >
-              {protectionActive ? 'Pause Protection' : 'Activate Protection'}
-            </button>
-          </div>
-        </div>
-
-        <section className="rounded-2xl border border-sky-500/20 bg-[#0a0f1d] p-5 sm:p-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-start gap-3">
-              <Globe className="mt-0.5 h-5 w-5 shrink-0 text-sky-400" />
-              <div>
-                <h3 className="text-sm font-bold text-white">Protected ChatGPT Browser</h3>
-                <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-400">
-                  Open ChatGPT in Krypton’s isolated Chrome or Edge profile for local prompt inspection. No extension is required in this managed profile; regular browser windows are not covered by this request-level protection.
-                </p>
-              </div>
-            </div>
-            <div className="flex shrink-0 gap-2">
-              <button
-                type="button"
-                onClick={() => void openProtectedChatGPT('chrome')}
-                disabled={deviceInfo.platform !== 'win32' || managedBrowserLoading !== null}
-                className="rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs font-semibold text-sky-200 transition hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {managedBrowserLoading === 'chrome' ? 'Opening…' : 'Open in Chrome'}
-              </button>
-              <button
-                type="button"
-                onClick={() => void openProtectedChatGPT('edge')}
-                disabled={deviceInfo.platform !== 'win32' || managedBrowserLoading !== null}
-                className="rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs font-semibold text-sky-200 transition hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {managedBrowserLoading === 'edge' ? 'Opening…' : 'Open in Edge'}
-              </button>
-            </div>
-          </div>
-          {deviceInfo.platform !== 'win32' && (
-            <p className="mt-3 text-xs text-amber-300">Managed browser prompt inspection is currently available on Windows only.</p>
-          )}
-          {managedBrowserError && (
-            <p className="mt-3 text-xs text-rose-300" role="alert">{managedBrowserError}</p>
-          )}
-        </section>
-
-        {/* Live Metrics Grid */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div className="rounded-2xl border border-slate-800/80 bg-[#0a0f1d] p-5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-400">Protection Status</span>
-              <Activity className={`h-4 w-4 ${protectionActive && inputMonitorReady ? 'text-emerald-400' : 'text-amber-400'}`} />
-            </div>
-            <p className={`mt-2 text-2xl font-bold ${protectionActive && inputMonitorReady ? 'text-emerald-400' : 'text-amber-400'}`}>
-              {protectionActive && inputMonitorReady ? 'Guarding' : 'Not Ready'}
-            </p>
-            <p className="mt-1 text-[11px] text-slate-500">
-              {inputMonitorReady ? 'Windows OS input guard active' : 'Native input guard unavailable'}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-slate-800/80 bg-[#0a0f1d] p-5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-400">Threats Blocked</span>
-              <XCircle className="h-4 w-4 text-rose-400" />
-            </div>
-            <p className="mt-2 text-2xl font-bold text-rose-400">{stats.blockedCount}</p>
-            <p className="mt-1 text-[11px] text-slate-500">Sensitive prompt leaks intercepted</p>
-          </div>
-
-          <div className="rounded-2xl border border-slate-800/80 bg-[#0a0f1d] p-5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-400">Security Engine</span>
-              {inputMonitorReady
-                ? <CheckCircle2 className="h-4 w-4 text-sky-400" />
-                : <AlertTriangle className="h-4 w-4 text-amber-400" />}
-            </div>
-            <p className="mt-2 text-2xl font-bold text-white">{inputMonitorReady ? 'Ready' : 'Unavailable'}</p>
-            <p className="mt-1 text-[11px] text-slate-500">Windows keyboard, mouse & accessibility guard</p>
-          </div>
-        </div>
-
-        {/* Live Interactive Scanner Tester */}
-        <section className="rounded-2xl border border-slate-800/80 bg-[#0a0f1d] p-5 sm:p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Terminal className="h-4 w-4 text-sky-400" />
-                Live Prompt DLP Tester
-              </h3>
-              <p className="text-xs text-slate-400">
-                Test how Krypton scans and blocks sensitive secrets or allows safe prompts against company policy.
+              <p className="mt-8 flex items-center gap-2 text-[10px] font-bold tracking-[0.22em] text-cyan-300">
+                <span className="h-px w-8 bg-cyan-300/70" /> THE PROMPT PERIMETER
               </p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() =>
-                  copySampleThreat('Here is my OpenAI key sk-proj-998877665544332211aabbccddeeffgghhiijj')
-                }
-                className="rounded-lg border border-slate-800 bg-slate-900 px-2.5 py-1 text-[11px] text-slate-300 hover:bg-slate-800"
-              >
-                {copiedSample ? 'Loaded Sample!' : 'Try API Key Threat'}
-              </button>
-            </div>
-          </div>
+              <h1 className="mt-5 max-w-xl text-5xl font-semibold leading-[0.96] tracking-[-0.065em] text-white sm:text-6xl xl:text-7xl">
+                Your data.
+                <span className="mt-2 block text-slate-500">Your boundary.</span>
+              </h1>
+              <p className="mt-7 max-w-lg text-sm leading-7 text-slate-400 sm:text-base">
+                Sensitive prompt content is evaluated on this device against company rules. Risky actions can be held for a decision before submission.
+              </p>
 
-          <div className="space-y-3">
-            <textarea
-              rows={3}
-              value={testInput}
-              onChange={(e) => setTestInput(e.target.value)}
-              placeholder="Type or paste any prompt here to test instant Krypton DLP scanner response..."
-              className="w-full rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-xs font-mono text-white placeholder-slate-600 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-            />
-
-            <div className="flex items-center justify-between">
-              <button
-                type="button"
-                onClick={handleTestScan}
-                disabled={isTesting || !testInput.trim()}
-                className="flex items-center gap-2 rounded-xl bg-sky-500/15 border border-sky-400/30 px-4 py-2 text-xs font-semibold text-sky-300 hover:bg-sky-500/25 disabled:opacity-40"
-              >
-                {isTesting ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
-                Run Live Scan
-              </button>
-
-              {testResult && (
-                <div className="flex items-center gap-2 text-xs">
-                  <span className="text-slate-400">Action:</span>
-                  <span
-                    className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
-                      testResult.action === 'block'
-                        ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                        : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                    }`}
-                  >
-                    {testResult.action === 'block' ? '🚫 BLOCKED' : '✅ ALLOWED'}
-                  </span>
-                  <span className="text-slate-400">Risk: {testResult.highestRisk}</span>
-                </div>
+              <div className="mt-9 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => void openProtectedChatGPT('chrome')}
+                  disabled={deviceInfo.platform !== 'win32' || managedBrowserLoading !== null}
+                  className="group inline-flex items-center gap-3 rounded-lg bg-cyan-300 px-5 py-3 text-xs font-bold text-slate-950 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {managedBrowserLoading === 'chrome' ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Globe className="h-4 w-4" />}
+                  OPEN PROTECTED CHROME
+                  <ArrowUpRight className="h-3.5 w-3.5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void openProtectedChatGPT('edge')}
+                  disabled={deviceInfo.platform !== 'win32' || managedBrowserLoading !== null}
+                  className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/[0.03] px-4 py-3 text-xs font-semibold text-slate-200 transition hover:border-white/30 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {managedBrowserLoading === 'edge' ? <RefreshCw className="h-4 w-4 animate-spin" /> : null}
+                  OPEN EDGE
+                </button>
+                <button
+                  type="button"
+                  onClick={handleToggleProtection}
+                  className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-4 py-3 text-xs font-semibold text-slate-400 transition hover:border-white/25 hover:text-white"
+                >
+                  {protectionActive ? 'PAUSE DEVICE GUARD' : 'RESUME DEVICE GUARD'}
+                </button>
+              </div>
+              {deviceInfo.platform !== 'win32' && (
+                <p className="mt-4 text-xs text-amber-300">Protected Chrome/Edge request inspection is available on Windows only.</p>
+              )}
+              {managedBrowserError && (
+                <p className="mt-4 text-xs text-rose-300" role="alert">{managedBrowserError}</p>
+              )}
+              {protectionActive && !inputMonitorReady && (
+                <p className="mt-4 text-xs text-amber-300">The native keyboard/accessibility guard is not ready. Do not treat this device as protected yet.</p>
               )}
             </div>
 
-            {testResult?.hasRisk && testResult.matches?.length > 0 && (
-              <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-200 space-y-1">
-                <p className="font-semibold text-rose-300">
-                  Detected Violations: {testResult.matches.map((m: any) => m.ruleName).join(', ')}
-                </p>
-                <p className="text-[11px] text-slate-300">
-                  Redacted Preview: <span className="font-mono text-white">{testResult.redactedPrompt}</span>
-                </p>
-              </div>
-            )}
-          </div>
-        </section>
-
-        {/* Recent Real-Time Activity Log */}
-        <section className="rounded-2xl border border-slate-800/80 bg-[#0a0f1d] p-5 sm:p-6 space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
-              <Flame className="h-4 w-4 text-amber-400" />
-              Recent Endpoint DLP Activity
-            </h3>
-            <span className="text-[11px] text-slate-500">Live feed synced with company security center</span>
-          </div>
-
-          {recentEvents.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-slate-800 p-6 text-center text-xs text-slate-500">
-              No DLP activity recorded yet. Use the protected-browser buttons above for request-level inspection without an extension. Standard browser windows are not attached to that managed profile.
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {recentEvents.slice(0, 6).map((evt) => (
-                <div
-                  key={evt.id}
-                  className="flex items-center justify-between rounded-xl border border-slate-800/60 bg-slate-950/40 p-3 text-xs"
-                >
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={`h-2 w-2 rounded-full ${
-                        evt.actionTaken === 'block' ? 'bg-rose-500' : 'bg-emerald-400'
-                      }`}
-                    />
-                    <div>
-                      <p className="font-semibold text-white">{evt.ruleName}</p>
-                      <p className="text-[11px] text-slate-400">{evt.targetName}</p>
-                    </div>
+            <div className="relative mx-auto w-full max-w-[440px]">
+              <div className="absolute -inset-8 rounded-full bg-cyan-400/[0.08] blur-3xl" />
+              <div className="relative rounded-xl border border-white/10 bg-[#080d13]/90 p-5 shadow-2xl backdrop-blur sm:p-6">
+                <div className="flex items-center justify-between border-b border-white/[0.08] pb-4">
+                  <div>
+                    <p className="text-[9px] font-bold tracking-[0.2em] text-slate-500">INSPECTION PATH</p>
+                    <p className="mt-1 text-xs font-semibold text-slate-200">Local decision gate</p>
                   </div>
-                  <div className="text-right">
-                    <span
-                      className={`rounded px-2 py-0.5 text-[10px] font-bold ${
-                        evt.actionTaken === 'block'
-                          ? 'bg-rose-500/20 text-rose-300'
-                          : 'bg-emerald-500/20 text-emerald-300'
-                      }`}
-                    >
-                      {evt.actionTaken.toUpperCase()}
-                    </span>
-                    <p className="mt-0.5 text-[10px] text-slate-500">
-                      {new Date(evt.timestamp).toLocaleTimeString()}
-                    </p>
+                  <ScanLine className="h-5 w-5 text-cyan-300" />
+                </div>
+                <div className="relative mt-5 space-y-3">
+                  <div className="absolute bottom-8 left-[19px] top-8 w-px bg-gradient-to-b from-cyan-300/50 via-cyan-300/20 to-teal-300/50" />
+                  <div className="relative flex items-center gap-4 rounded-lg border border-white/[0.08] bg-white/[0.025] p-3.5">
+                    <span className="z-10 flex h-10 w-10 items-center justify-center rounded-lg border border-cyan-200/20 bg-cyan-200/10 text-cyan-200"><Fingerprint className="h-4 w-4" /></span>
+                    <div>
+                      <p className="text-[9px] font-bold tracking-[0.16em] text-slate-500">01 / INPUT</p>
+                      <p className="mt-1 text-xs font-semibold text-white">Prompt entry detected</p>
+                    </div>
+                    <span className="ml-auto text-[9px] text-slate-600">DEVICE</span>
+                  </div>
+                  <div className="relative flex items-center gap-4 rounded-lg border border-cyan-200/15 bg-cyan-200/[0.045] p-3.5">
+                    <span className="z-10 flex h-10 w-10 items-center justify-center rounded-lg border border-cyan-200/20 bg-cyan-200/10 text-cyan-200"><ScanLine className="h-4 w-4" /></span>
+                    <div>
+                      <p className="text-[9px] font-bold tracking-[0.16em] text-cyan-200/60">02 / ANALYZE</p>
+                      <p className="mt-1 text-xs font-semibold text-white">Company rules evaluated</p>
+                    </div>
+                    <span className="ml-auto text-[9px] text-cyan-200/70">LOCAL</span>
+                  </div>
+                  <div className="relative flex items-center gap-4 rounded-lg border border-white/[0.08] bg-white/[0.025] p-3.5">
+                    <span className="z-10 flex h-10 w-10 items-center justify-center rounded-lg border border-teal-200/20 bg-teal-200/10 text-teal-200"><ShieldCheck className="h-4 w-4" /></span>
+                    <div>
+                      <p className="text-[9px] font-bold tracking-[0.16em] text-slate-500">03 / CONTROL</p>
+                      <p className="mt-1 text-xs font-semibold text-white">Allow, warn, or block</p>
+                    </div>
+                    <span className="ml-auto text-[9px] text-slate-600">POLICY</span>
                   </div>
                 </div>
-              ))}
+                <div className="mt-5 flex items-center justify-between border-t border-white/[0.08] pt-4">
+                  <span className="text-[9px] tracking-[0.14em] text-slate-500">PRE-SUBMISSION CONTROL</span>
+                  <span className="inline-flex items-center gap-1.5 text-[9px] font-bold tracking-[0.12em] text-teal-200"><Sparkles className="h-3 w-3" /> RAW TEXT SCANNED LOCALLY</span>
+                </div>
+              </div>
             </div>
-          )}
+          </div>
+
+          <div className="relative grid gap-0 border-t border-white/[0.08] bg-black/20 sm:grid-cols-3">
+            <div className="flex gap-3 border-b border-white/[0.07] p-5 sm:border-b-0 sm:border-r sm:p-6">
+              <ScanLine className="mt-0.5 h-4 w-4 shrink-0 text-cyan-300" />
+              <div>
+                <p className="text-[10px] font-bold tracking-[0.12em] text-white">LOCAL SCAN</p>
+                <p className="mt-1 text-[10px] leading-5 text-slate-500">Text is inspected on-device by the configured rules engine.</p>
+              </div>
+            </div>
+            <div className="flex gap-3 border-b border-white/[0.07] p-5 sm:border-b-0 sm:border-r sm:p-6">
+              <Globe className="mt-0.5 h-4 w-4 shrink-0 text-cyan-300" />
+              <div>
+                <p className="text-[10px] font-bold tracking-[0.12em] text-white">MANAGED BROWSER</p>
+                <p className="mt-1 text-[10px] leading-5 text-slate-500">Request-level inspection runs in the isolated Windows Chrome/Edge profile, without an extension.</p>
+              </div>
+            </div>
+            <div className="flex gap-3 p-5 sm:p-6">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+              <div>
+                <p className="text-[10px] font-bold tracking-[0.12em] text-white">CLEAR SCOPE</p>
+                <p className="mt-1 text-[10px] leading-5 text-slate-500">Standard browser windows and inaccessible apps are not guaranteed coverage.</p>
+              </div>
+            </div>
+          </div>
         </section>
+
+        <details
+          open={diagnosticsOpen}
+          onToggle={(event) => setDiagnosticsOpen(event.currentTarget.open)}
+          className="mt-5 rounded-xl border border-white/[0.08] bg-[#0c121a]/80"
+        >
+          <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4 text-xs font-semibold text-slate-300">
+            <span className="flex items-center gap-2"><Terminal className="h-4 w-4 text-slate-500" /> Diagnostics & activity</span>
+            <ArrowDown className="h-3.5 w-3.5 text-slate-500 transition-transform open:rotate-180" />
+          </summary>
+          <div className="grid gap-5 border-t border-white/[0.08] p-5 lg:grid-cols-2">
+            <section className="space-y-3">
+              <div>
+                <h2 className="text-xs font-bold text-white">Safe prompt test</h2>
+                <p className="mt-1 text-[10px] text-slate-500">Use synthetic sample text only. This tests the local rule engine, not delivery to an AI site.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => copySampleThreat('Test only: OPENAI_API_KEY=sk-proj-abc1234567890def1234567890ghij')}
+                  className="rounded-md border border-white/10 px-2.5 py-1.5 text-[10px] text-slate-300 hover:border-white/25"
+                >
+                  {copiedSample ? 'Sample loaded' : 'Load synthetic secret'}
+                </button>
+              </div>
+              <textarea
+                rows={3}
+                value={testInput}
+                onChange={(event) => setTestInput(event.target.value)}
+                placeholder="Enter synthetic text to test the local scanner"
+                className="w-full rounded-lg border border-white/10 bg-[#080b10] p-3 text-xs font-mono text-white placeholder-slate-700 outline-none focus:border-cyan-300/50"
+              />
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleTestScan}
+                  disabled={isTesting || !testInput.trim()}
+                  className="inline-flex items-center gap-2 rounded-md bg-white/10 px-3 py-2 text-[10px] font-bold text-slate-200 hover:bg-white/15 disabled:opacity-40"
+                >
+                  {isTesting ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <ScanLine className="h-3.5 w-3.5" />}
+                  RUN LOCAL SCAN
+                </button>
+                {testResult && <span className={`text-[10px] font-bold ${testResult.action === 'block' ? 'text-rose-300' : 'text-teal-300'}`}>{testResult.action?.toUpperCase()} · {testResult.highestRisk}</span>}
+              </div>
+              {testResult?.hasRisk && testResult.matches?.length > 0 && (
+                <p className="text-[10px] leading-5 text-slate-400">
+                  Matched: {testResult.matches.map((match: any) => match.ruleName).join(', ')}
+                </p>
+              )}
+            </section>
+
+            <section>
+              <h2 className="text-xs font-bold text-white">Recent endpoint events</h2>
+              <p className="mt-1 text-[10px] text-slate-500">Events reported by this device.</p>
+              {recentEvents.length === 0 ? (
+                <p className="mt-5 rounded-lg border border-dashed border-white/10 p-4 text-center text-[10px] text-slate-500">No events recorded on this device yet.</p>
+              ) : (
+                <div className="mt-3 space-y-2">
+                  {recentEvents.slice(0, 5).map((event) => (
+                    <div key={event.id} className="flex items-center justify-between gap-3 rounded-lg border border-white/[0.07] bg-black/15 px-3 py-2.5">
+                      <div className="min-w-0">
+                        <p className="truncate text-[10px] font-semibold text-slate-200">{event.ruleName}</p>
+                        <p className="mt-1 truncate text-[9px] text-slate-500">{event.targetName} · {new Date(event.timestamp).toLocaleTimeString()}</p>
+                      </div>
+                      <span className={`shrink-0 text-[9px] font-bold tracking-wider ${event.actionTaken === 'block' ? 'text-rose-300' : event.actionTaken === 'warn' ? 'text-amber-300' : 'text-teal-300'}`}>{event.actionTaken.toUpperCase()}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+        </details>
       </main>
 
       {showDeactivateDialog && (

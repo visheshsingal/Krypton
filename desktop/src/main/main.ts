@@ -28,6 +28,10 @@ import { LocalNetworkInterceptor } from './network-interceptor';
 import { TamperProofScheduleEvaluator } from '../engine/schedule-evaluator';
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+if (app.isPackaged) {
+  app.setName('Krypton Sentinel');
+  app.setPath('userData', path.join(app.getPath('appData'), 'Krypton Sentinel'));
+}
 const store = new DesktopStore();
 const securityEngine = new PromptSecurityEngine();
 const scheduleEvaluator = new TamperProofScheduleEvaluator();
@@ -200,7 +204,7 @@ function createWindow() {
     height: 760,
     minWidth: 800,
     minHeight: 600,
-    title: 'Krypton AI Security & Data Governance Agent',
+    title: 'Krypton Sentinel',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

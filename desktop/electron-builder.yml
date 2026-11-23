@@ -1,5 +1,5 @@
-appId: com.kryptonsecurity.desktop
-productName: Krypton AI Security
+appId: com.kryptonsecurity.sentinel
+productName: Krypton Sentinel
 copyright: Copyright © 2026 Krypton Security Inc.
 
 directories:
@@ -48,8 +48,8 @@ nsis:
   deleteAppDataOnUninstall: false
   createDesktopShortcut: always
   createStartMenuShortcut: true
-  shortcutName: Krypton AI Security
-  uninstallDisplayName: Krypton AI Security
+  shortcutName: Krypton Sentinel
+  uninstallDisplayName: Krypton Sentinel
   installerSidebar: build-resources/windows-installer-sidebar.bmp
   uninstallerSidebar: build-resources/windows-installer-sidebar.bmp
   installerIcon: build-resources/windows-icon.ico
