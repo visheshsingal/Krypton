@@ -1,6 +1,6 @@
 {
-  "available": true,
-  "releaseStatus": "built-unsigned",
+  "available": false,
+  "releaseStatus": "withdrawn",
   "version": "2.0.0",
   "architecture": "x64",
   "packageName": "Krypton-Windows-x64-2.0.0.zip",
