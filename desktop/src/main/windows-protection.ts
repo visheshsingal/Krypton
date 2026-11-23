@@ -209,6 +209,9 @@ public class KryptonInputGuard {
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
 
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
     [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
     private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
 
@@ -268,35 +271,56 @@ public class KryptonInputGuard {
 
             IntPtr hwnd = GetForegroundWindow();
             if (hwnd != IntPtr.Zero) {
+                uint pid = 0;
+                GetWindowThreadProcessId(hwnd, out pid);
+                string procName = "";
+                try {
+                    using (Process p = Process.GetProcessById((int)pid)) {
+                        procName = p.ProcessName.ToLower();
+                    }
+                } catch {}
+
                 int len = GetWindowText(hwnd, _titleSb, 512);
-                if (len > 0) {
-                    string title = _titleSb.ToString().ToLower();
-                    string matchedTarget = null;
+                string title = len > 0 ? _titleSb.ToString().ToLower() : "";
+
+                bool isTarget = false;
+                string matchedTarget = "browser";
+
+                if (procName == "chrome" || procName == "msedge" || procName == "brave" || procName == "firefox" || procName == "opera" || procName.Contains("chatgpt") || procName.Contains("claude")) {
+                    isTarget = true;
+                    matchedTarget = (procName.Length > 0 ? procName : "browser");
+                } else {
                     foreach (string kw in _targetKeywords) {
                         if (title.Contains(kw)) {
+                            isTarget = true;
                             matchedTarget = kw;
                             break;
                         }
                     }
+                }
 
-                    if (matchedTarget != null) {
-                        if (vkCode == VK_BACK) {
-                            if (_buffer.Length > 0) {
-                                _buffer.Remove(_buffer.Length - 1, 1);
-                            }
-                        } else if (vkCode == VK_ESCAPE) {
-                            _buffer.Clear();
-                        } else if (vkCode == VK_RETURN) {
-                            string text = _buffer.ToString();
-                            if (text.Length > 0) {
-                                string detectedRule;
-                                if (CheckSensitiveData(text, out detectedRule)) {
-                                    EmitPrompt(matchedTarget, text);
-                                    _buffer.Clear();
+                if (isTarget) {
+                    if (vkCode == VK_BACK) {
+                        if (_buffer.Length > 0) {
+                            _buffer.Remove(_buffer.Length - 1, 1);
+                        }
+                    } else if (vkCode == VK_ESCAPE) {
+                        _buffer.Clear();
+                    } else if (vkCode == VK_RETURN) {
+                        string text = _buffer.ToString();
+                        if (text.Length > 0) {
+                            string detectedRule;
+                            if (CheckSensitiveData(text, out detectedRule)) {
+                                EmitPrompt(matchedTarget, text);
+                                _buffer.Clear();
 
+                                string currentTarget = matchedTarget;
+                                string currentRule = detectedRule;
+
+                                new System.Threading.Thread(new System.Threading.ThreadStart(delegate() {
                                     DialogResult choice = MessageBox.Show(
-                                        "Krypton DLP Security Alert:\n\nSensitive data detected (" + detectedRule + ").\n\nPrompt submission to " + matchedTarget.ToUpper() + " was stopped.\n\nDo you want to ALLOW this prompt anyway?",
-                                        "Krypton AI Security - Zero Extension DLP",
+                                        "Krypton DLP Security Alert:\n\nSensitive data detected (" + currentRule + ").\n\nPrompt submission was stopped.\n\nDo you want to ALLOW this prompt anyway?",
+                                        "Krypton AI Security",
                                         MessageBoxButtons.YesNo,
                                         MessageBoxIcon.Warning,
                                         MessageBoxDefaultButton.Button2
@@ -304,30 +328,30 @@ public class KryptonInputGuard {
 
                                     if (choice == DialogResult.No) {
                                         SendKeys.SendWait("^a{BACKSPACE}");
-                                        return (IntPtr)1;
                                     } else {
                                         SendKeys.SendWait("{ENTER}");
-                                        return (IntPtr)1;
                                     }
-                                } else {
-                                    EmitPrompt(matchedTarget, text);
-                                    _buffer.Clear();
-                                }
-                            }
-                        } else {
-                            byte[] keyState = new byte[256];
-                            GetKeyboardState(keyState);
-                            StringBuilder charBuffer = new StringBuilder(10);
-                            int result = ToUnicode((uint)vkCode, 0, keyState, charBuffer, charBuffer.Capacity, 0);
-                            if (result > 0) {
-                                string str = charBuffer.ToString();
-                                _buffer.Append(str);
+                                })).Start();
+
+                                return (IntPtr)1;
+                            } else {
+                                EmitPrompt(matchedTarget, text);
+                                _buffer.Clear();
                             }
                         }
                     } else {
-                        if (_buffer.Length > 0) {
-                            _buffer.Clear();
+                        byte[] keyState = new byte[256];
+                        GetKeyboardState(keyState);
+                        StringBuilder charBuffer = new StringBuilder(10);
+                        int result = ToUnicode((uint)vkCode, 0, keyState, charBuffer, charBuffer.Capacity, 0);
+                        if (result > 0) {
+                            string str = charBuffer.ToString();
+                            _buffer.Append(str);
                         }
+                    }
+                } else {
+                    if (_buffer.Length > 0) {
+                        _buffer.Clear();
                     }
                 }
             }
@@ -351,7 +375,6 @@ Add-Type -TypeDefinition $source -ReferencedAssemblies System.Windows.Forms -Err
 
       this.inputMonitorProcess = spawn('powershell.exe', [
         '-NoProfile',
-        '-NonInteractive',
         '-ExecutionPolicy',
         'Bypass',
         '-File',

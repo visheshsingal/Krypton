@@ -378,22 +378,22 @@ export default function App() {
       </header>
 
       {/* Main Content Dashboard */}
-      <main className="mx-auto max-w-6xl p-6 sm:p-8 space-y-6">
+      <main className="mx-auto max-w-5xl p-6 sm:p-8 space-y-6">
         {/* Shield Status Hero Card */}
         <div className="relative overflow-hidden rounded-2xl border border-sky-500/20 bg-gradient-to-r from-[#0c162d] via-[#091122] to-[#080d1a] p-6 shadow-2xl">
           <div className="pointer-events-none absolute -right-10 -top-10 h-64 w-64 rounded-full bg-sky-500/10 blur-3xl" />
 
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
             <div className="flex items-center gap-4">
-              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-emerald-500/30 bg-emerald-500/15 text-emerald-400 shadow-lg shadow-emerald-500/20">
-                <ShieldCheck className="h-9 w-9" />
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-emerald-500/30 bg-emerald-500/15 text-emerald-400 shadow-lg shadow-emerald-500/20">
+                <ShieldCheck className="h-8 w-8" />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-white">
+                <h2 className="text-lg font-bold text-white">
                   Real-Time AI DLP Protection Active
                 </h2>
-                <p className="mt-1 text-xs text-slate-400 max-w-xl">
-                  Automatically intercepts outgoing prompts and sensitive data typed or pasted into Google Chrome, Microsoft Edge, Brave, and desktop AI apps without requiring browser extensions.
+                <p className="mt-0.5 text-xs text-slate-400">
+                  Zero-extension keystroke and clipboard guard running across all browsers.
                 </p>
               </div>
             </div>
@@ -408,54 +408,15 @@ export default function App() {
           </div>
         </div>
 
-        {/* 3 Pillars of Zero-Setup Protection */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div className="rounded-2xl border border-slate-800/90 bg-[#0a0f1d] p-4 flex items-start gap-3.5">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-500/15 border border-sky-400/25 text-sky-400">
-              <Globe className="h-5 w-5" />
-            </div>
-            <div>
-              <h4 className="text-xs font-bold text-white">Automatic Browser Guard</h4>
-              <p className="mt-1 text-[11px] text-slate-400 leading-relaxed">
-                Applies automatically when you open regular Chrome or Edge. No special profiles or extension installation required.
-              </p>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-slate-800/90 bg-[#0a0f1d] p-4 flex items-start gap-3.5">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 border border-emerald-400/25 text-emerald-400">
-              <Keyboard className="h-5 w-5" />
-            </div>
-            <div>
-              <h4 className="text-xs font-bold text-white">Live Typing & Input DLP</h4>
-              <p className="mt-1 text-[11px] text-slate-400 leading-relaxed">
-                Scans prompts in real-time as you write in ChatGPT, Claude, Gemini, etc., blocking secrets before submission.
-              </p>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-slate-800/90 bg-[#0a0f1d] p-4 flex items-start gap-3.5">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-500/15 border border-indigo-400/25 text-indigo-400">
-              <ClipboardCheck className="h-5 w-5" />
-            </div>
-            <div>
-              <h4 className="text-xs font-bold text-white">Instant Clipboard Guard</h4>
-              <p className="mt-1 text-[11px] text-slate-400 leading-relaxed">
-                Instantly redacts API keys, credentials, and confidential secrets if copied or pasted into AI chat windows.
-              </p>
-            </div>
-          </div>
-        </div>
-
         {/* Live Metrics Grid */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="rounded-2xl border border-slate-800/80 bg-[#0a0f1d] p-5">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-400">System Status</span>
+              <span className="text-xs font-medium text-slate-400">Protection Status</span>
               <Activity className="h-4 w-4 text-emerald-400" />
             </div>
             <p className="mt-2 text-2xl font-bold text-emerald-400">Guarding</p>
-            <p className="mt-1 text-[11px] text-slate-500">Chrome, Edge & AI Apps protected</p>
+            <p className="mt-1 text-[11px] text-slate-500">Live endpoint monitoring active</p>
           </div>
 
           <div className="rounded-2xl border border-slate-800/80 bg-[#0a0f1d] p-5">
@@ -469,11 +430,11 @@ export default function App() {
 
           <div className="rounded-2xl border border-slate-800/80 bg-[#0a0f1d] p-5">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-400">Zero-Extension DLP</span>
+              <span className="text-xs font-medium text-slate-400">Security Engine</span>
               <CheckCircle2 className="h-4 w-4 text-sky-400" />
             </div>
-            <p className="mt-2 text-2xl font-bold text-white">Active</p>
-            <p className="mt-1 text-[11px] text-slate-500">Native OS keystroke & clipboard protection</p>
+            <p className="mt-2 text-2xl font-bold text-white">Online</p>
+            <p className="mt-1 text-[11px] text-slate-500">Native OS hook & clipboard guard</p>
           </div>
         </div>
 
