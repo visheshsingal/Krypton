@@ -1,30 +1,42 @@
 # Krypton Android app
 
-The Android app is a local setup screen for optional, user-enabled text checks across apps. It does not require an account, enroll the phone, connect to the Krypton API, or report detections to the dashboard.
+Krypton Android uses a custom, user-enabled input method (keyboard) to check text as it is typed. The app signs in to the Krypton service, activates the device, and refreshes the administrator policy and schedule. Text checks run locally on the phone; typed text and detections are not uploaded.
 
-After the user enables **Krypton local text protection** under Android Settings → Accessibility, the service checks editable text fields for common API keys, private keys, and password-like strings. Password-entry fields are skipped. Scanning is on-device; the app does not save or transmit text or detections. It does not capture screenshots or inspect non-editable screen content.
+## Set up the keyboard
 
-This is best-effort warning, not guaranteed blocking: apps can hide field contents from Accessibility or submit before a warning is shown. Accessibility must be enabled and can be disabled by the user in Android Settings at any time. The app does not attempt to enable the service itself.
+1. Install and open Krypton, then sign in with the employee account.
+2. Tap **Enable Krypton keyboard** and enable it in Android's input-method settings.
+3. Return to Krypton, tap **Select Krypton keyboard**, and choose it as the active keyboard.
+4. Confirm the app reports that policy is active. The keyboard displays whether checks are active whenever it is open.
 
-## Build and publish the installable test APK
+The keyboard compares text entered through it against common API-key, private-key, database-URL, and password-like patterns. When a match is found, the matching text is removed before it remains in the field. The user can keep it blocked or choose **Allow once** if the administrator's policy permits bypassing warnings. Password-entry fields are not scanned.
 
-Requirements: JDK 17+, Android SDK Platform 35, Android SDK Build-Tools 35.0.0, and Android SDK Command-line Tools. The first build downloads the Gradle wrapper distribution and Android Gradle Plugin.
+Policy timing uses the administrator's schedule and server time. The app refreshes policy on sign-in and periodically while the keyboard is in use. A reboot or expired offline validation requires the app to reconnect before policy is considered active.
+
+## Important coverage limits
+
+This is not device-wide or tamper-proof enforcement. Android requires the user to enable and select Krypton as the keyboard. Text entered with another keyboard, pasted from the clipboard, dictated, inserted by an app, or entered into a custom editor may not be inspected. Apps can also handle submission in app-specific ways. Do not rely on this keyboard as the only control for protecting secrets.
+
+The app sends account, device, and policy requests to the Krypton API. It does not send the text being typed or detection contents. Use synthetic values for testing, never real credentials.
+
+## Build a local debug APK
+
+Requirements: JDK 17+, Android SDK Platform 35, Android SDK Build-Tools 35.0.0, and Android SDK Command-line Tools. Configure `ANDROID_HOME` and `JAVA_HOME`, then run:
 
 ```sh
 cd android
-./build-debug-apk.sh
+./gradlew assembleDebug
 ```
 
-The command builds a debug-signed, versioned APK in `public/downloads/` and also updates the stable download URL `/downloads/Krypton-Android-0.1.0-test.apk` used by the website button. The setup button opens Krypton's Accessibility service detail page directly when supported, otherwise it opens the main Accessibility settings. The APK checksum and `debug-test-build` status are recorded in `public/downloads/android-release.json`. Deploy the website to publish the APK at the existing download URL. Android may ask the user to allow installation from the browser or file manager that opened the APK.
-
-This debug APK is for testing only. Do not distribute it as a production release; production publishing needs a protected release-signing key and additional Play Store/privacy review.
+The local debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`. This command does not publish or copy the APK to the website. The APK is debug-signed for development and testing only; production distribution requires protected release signing and the relevant privacy and store review.
 
 ## Manual app testing
 
-1. Install the APK and open Krypton.
-2. Tap **Open Accessibility Settings** and explicitly enable **Krypton local text protection**.
-3. Return to Krypton and confirm the enabled status is shown.
-4. In a test text field in another app, type a synthetic credential-looking string and confirm a local warning appears.
-5. Disable the service in Android Accessibility settings and confirm Krypton reports protection as off.
+1. Install the debug APK, open Krypton, and sign in using a test account.
+2. Enable and select Krypton keyboard in Android settings.
+3. Confirm the keyboard reports the administrator policy as active.
+4. In a test text field, type a synthetic matching value such as `sk-proj-ABCDEFGHIJKLMNOPQRSTUVWXYZ123456`. Confirm it is removed and the policy-appropriate block/allow choices appear.
+5. Test the administrator schedule outside and inside its active window, and verify policy status changes accordingly.
+6. Confirm password fields are identified as not scanned.
 
-Do not use real credentials or production secrets for testing.
+Use only synthetic values and test accounts.

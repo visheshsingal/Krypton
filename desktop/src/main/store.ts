@@ -14,6 +14,11 @@ interface DesktopStoredData {
   policy?: any;
   lastHeartbeatAt?: string;
   lastSuccessfulValidation?: string;
+  policyClock?: {
+    serverTimeMs: number;
+    monotonicMs: number;
+    maxObservedWallMs: number;
+  };
   offlineGraceHours?: number;
   usbMonitoringEnabled?: boolean;
 }
@@ -80,6 +85,7 @@ export class DesktopStore {
     delete this.data.user;
     delete this.data.license;
     delete this.data.lastSuccessfulValidation;
+    delete this.data.policyClock;
     this.data.usbMonitoringEnabled = false;
     this.saveData(this.data);
   }

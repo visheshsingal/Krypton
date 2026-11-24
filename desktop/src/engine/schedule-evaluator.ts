@@ -92,12 +92,14 @@ export class TamperProofScheduleEvaluator {
 
     // Evaluate day of week in target timezone
     try {
+      const timezone = this.schedule.timezone || 'Asia/Kolkata';
+      Intl.DateTimeFormat('en-US', { timeZone: timezone }).format(authDate);
       const formatter = new Intl.DateTimeFormat('en-US', {
-        timeZone: this.schedule.timezone || 'Asia/Kolkata',
+        timeZone: timezone,
         weekday: 'short',
         hour: 'numeric',
         minute: 'numeric',
-        hour12: false,
+        hourCycle: 'h23',
       });
 
       const parts = formatter.formatToParts(authDate);
@@ -115,10 +117,24 @@ export class TamperProofScheduleEvaluator {
         Sun: 7,
       };
 
-      const dayNumber = weekdayMap[weekdayStr] || 1;
+      const dayNumber = weekdayMap[weekdayStr];
+      if (!dayNumber) throw new Error('The schedule weekday could not be determined.');
 
-      // Check if current day is an excluded day
-      if (!this.schedule.workDays.includes(dayNumber)) {
+      // Check working hours
+      const currentMinutes = parseInt(hourStr, 10) * 60 + parseInt(minuteStr, 10);
+      const parseTime = (value: string): number => {
+        const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value);
+        if (!match) throw new Error('The schedule contains an invalid time.');
+        return Number(match[1]) * 60 + Number(match[2]);
+      };
+
+      const startMinutes = parseTime(this.schedule.startTime);
+      const endMinutes = parseTime(this.schedule.endTime);
+      const isOvernight = startMinutes > endMinutes;
+      const scheduleDay = isOvernight && currentMinutes < endMinutes
+        ? dayNumber === 1 ? 7 : dayNumber - 1
+        : dayNumber;
+      if (!Array.isArray(this.schedule.workDays) || !this.schedule.workDays.includes(scheduleDay)) {
         return {
           active: false,
           reason: `Personal device: Excluded day (${weekdayStr}). Monitoring paused for employee privacy.`,
@@ -127,15 +143,13 @@ export class TamperProofScheduleEvaluator {
         };
       }
 
-      // Check working hours
-      const currentMinutes = parseInt(hourStr, 10) * 60 + parseInt(minuteStr, 10);
-      const [startH, startM] = this.schedule.startTime.split(':').map(Number);
-      const [endH, endM] = this.schedule.endTime.split(':').map(Number);
+      const withinHours = startMinutes === endMinutes
+        ? false
+        : !isOvernight
+          ? currentMinutes >= startMinutes && currentMinutes < endMinutes
+          : currentMinutes >= startMinutes || currentMinutes < endMinutes;
 
-      const startMinutes = (startH || 9) * 60 + (startM || 0);
-      const endMinutes = (endH || 18) * 60 + (endM || 0);
-
-      if (currentMinutes < startMinutes || currentMinutes >= endMinutes) {
+      if (!withinHours) {
         return {
           active: false,
           reason: `Personal device: Outside working hours (${this.schedule.startTime} - ${this.schedule.endTime}). Monitoring paused for employee privacy.`,
@@ -152,8 +166,8 @@ export class TamperProofScheduleEvaluator {
       };
     } catch {
       return {
-        active: true,
-        reason: 'Schedule evaluation fallback to active',
+        active: false,
+        reason: 'Schedule evaluation failed; protection is not active (fail-closed).',
         authoritativeTime: authIso,
         ownership: this.ownership,
       };

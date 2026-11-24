@@ -23,14 +23,19 @@ import {
   isProtectedAiSite,
   PROTECTED_AI_SITES,
 } from './protected-browser-policy';
+import { observeWallClock, recordPolicyValidation } from './offline-policy-clock';
+import type { OfflinePolicyClockState } from './offline-policy-clock';
 import { WindowsProtectionAgent } from './windows-protection';
-import { LocalNetworkInterceptor } from './network-interceptor';
+import { EndpointEnforcementService } from './endpoint-enforcement';
 import { TamperProofScheduleEvaluator } from '../engine/schedule-evaluator';
 
+const PRODUCT_NAME = 'Krypton Guard';
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 if (app.isPackaged) {
-  app.setName('Krypton Sentinel');
-  app.setPath('userData', path.join(app.getPath('appData'), 'Krypton Sentinel'));
+  app.setName(PRODUCT_NAME);
+  app.setPath('userData', path.join(app.getPath('appData'), PRODUCT_NAME));
+} else {
+  app.setName(PRODUCT_NAME);
 }
 const store = new DesktopStore();
 const securityEngine = new PromptSecurityEngine();
@@ -63,30 +68,23 @@ const windowsAgent = new WindowsProtectionAgent(
     return canAllowOnce && response.response === 1;
   },
 );
-const networkInterceptor = new LocalNetworkInterceptor(
-  securityEngine,
-  (eventData) => void reportDesktopEvent(eventData),
-  8787,
-  () => scheduleEvaluator.isProtectionActiveNow().active,
+const endpointEnforcement = new EndpointEnforcementService(
+  app.isPackaged ? app.getPath('userData') : path.resolve(__dirname, '../../.krypton-dev-data'),
 );
 
 // Load cached policy if available
 const cachedPolicy = store.get('policy');
 if (cachedPolicy) {
   securityEngine.updatePolicy(cachedPolicy);
-}
-
-// Start local desktop DLP monitors; native input interception is Windows-only.
-windowsAgent.startAllMonitors();
-
-if (store.get('token')) {
-  void networkInterceptor.start();
+  endpointEnforcement.setDomains(cachedPolicy.protectedAiDomains);
 }
 
 let mainWindow: BrowserWindow | null = null;
 const managedBrowserSessions = new Map<ManagedBrowserKind, ManagedBrowserSession>();
 const browserEventTimes = new Map<ManagedBrowserKind, number[]>();
 let shuttingDown = false;
+let policyClockValidatedThisProcess = false;
+let serverTimeSynchronizedThisProcess = false;
 const productionBackendUrl = 'https://krypton-ten-theta.vercel.app/api';
 const productionWebsiteUrl = 'https://krypton-ten-theta.vercel.app';
 const windowsReleaseManifestUrl = `${productionWebsiteUrl}/downloads/windows-release.json`;
@@ -204,7 +202,7 @@ function createWindow() {
     height: 760,
     minWidth: 800,
     minHeight: 600,
-    title: 'Krypton Sentinel',
+    title: PRODUCT_NAME,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -238,38 +236,147 @@ function getProtectionAvailability() {
   const token = store.get('token');
   const lastValidation = store.get('lastSuccessfulValidation');
   const graceHours = store.get('offlineGraceHours') || 72;
+  const trustedNow = scheduleEvaluator.getAuthoritativeTime();
   const hasActiveLicense = Boolean(
     token &&
+    serverTimeSynchronizedThisProcess &&
     license?.status === 'active' &&
     license.expiresAt &&
-    Date.parse(license.expiresAt) > Date.now()
+    Date.parse(license.expiresAt) > trustedNow.getTime()
   );
-  const graceState = getOfflineProtectionState(lastValidation, graceHours);
+  const clock = store.get('policyClock');
+  const graceState = getCurrentPolicyGraceState(lastValidation, graceHours, clock);
+  const scheduleStatus = scheduleEvaluator.isProtectionActiveNow();
+  const enforcement = endpointEnforcement.getStatus({
+    licenseValid: hasActiveLicense,
+    policyValid: graceState === 'valid',
+    scheduleActive: scheduleStatus.active,
+    platform: process.platform,
+  });
 
   if (process.platform !== 'win32') {
-    return { available: false, status: 'windows_only', platform: process.platform, browsers: [] as ManagedBrowserKind[] };
+    return {
+      available: false,
+      status: 'windows_only',
+      platform: process.platform,
+      browsers: [] as ManagedBrowserKind[],
+      enforcement,
+      scheduleStatus,
+    };
   }
   if (!hasActiveLicense) {
-    return { available: false, status: 'activation_required', platform: process.platform, browsers: [] as ManagedBrowserKind[] };
+    return {
+      available: false,
+      status: 'activation_required',
+      platform: process.platform,
+      browsers: [] as ManagedBrowserKind[],
+      enforcement,
+      scheduleStatus,
+    };
   }
   if (graceState !== 'valid') {
-    return { available: false, status: 'license_validation_required', platform: process.platform, browsers: [] as ManagedBrowserKind[] };
+    return {
+      available: false,
+      status: 'license_validation_required',
+      platform: process.platform,
+      browsers: [] as ManagedBrowserKind[],
+      enforcement,
+      scheduleStatus,
+    };
   }
 
   const browsers = (['chrome', 'edge'] as const).filter((browser) =>
     Boolean(findManagedBrowserExecutable(browser))
   );
   if (browsers.length === 0) {
-    return { available: false, status: 'browser_not_installed', platform: process.platform, browsers };
+    return { available: false, status: 'browser_not_installed', platform: process.platform, browsers, enforcement, scheduleStatus };
   }
 
   return {
     available: true,
-    status: 'protected_browser_available',
+    status: enforcement.ready ? 'protected' : enforcement.state,
     platform: process.platform,
-    scope: 'krypton_managed_browser_profile_only',
+    scope: 'regular_chrome_edge_pac_plus_krypton_managed_profile',
     browsers,
+    enforcement,
+    scheduleStatus,
   };
+}
+
+async function syncEndpointProtection() {
+  if (process.platform !== 'win32') {
+    return endpointEnforcement.sync({
+      shouldBlockRegularBrowsers: false,
+      platform: process.platform,
+    });
+  }
+
+  try {
+    await endpointEnforcement.recoverStaleProxy();
+  } catch (error) {
+    console.error('[EndpointEnforcement] Could not recover the previous Windows proxy configuration:', error);
+    return endpointEnforcement.getStatus({
+      licenseValid: false,
+      policyValid: false,
+      scheduleActive: false,
+      platform: process.platform,
+    });
+  }
+
+  const license = store.get('license');
+  const hasActiveLicense = Boolean(
+    store.get('token') &&
+    serverTimeSynchronizedThisProcess &&
+    license?.status === 'active' &&
+    license.expiresAt &&
+    Date.parse(license.expiresAt) > scheduleEvaluator.getAuthoritativeTime().getTime()
+  );
+  const policyValid = getProtectionAvailabilityPolicyValid();
+  const schedule = scheduleEvaluator.isProtectionActiveNow();
+  const shouldBlockRegularBrowsers = Boolean(
+    hasActiveLicense &&
+    policyValid &&
+    serverTimeSynchronizedThisProcess &&
+    schedule.active
+  );
+  const status = await endpointEnforcement.sync({
+    shouldBlockRegularBrowsers,
+    policyDomains: store.get('policy')?.protectedAiDomains,
+    platform: process.platform,
+  });
+
+  if (!shouldBlockRegularBrowsers) {
+    await closeManagedBrowserSessions();
+  }
+  return status;
+}
+
+function getProtectionAvailabilityPolicyValid(): boolean {
+  return getCurrentPolicyGraceState(
+    store.get('lastSuccessfulValidation'),
+    store.get('offlineGraceHours') || 72,
+    store.get('policyClock'),
+  ) === 'valid';
+}
+
+function getCurrentPolicyGraceState(
+  lastValidation: string | undefined,
+  graceHours: number,
+  clock: OfflinePolicyClockState | undefined,
+) {
+  const now = Date.now();
+  const observedClock = observeWallClock(clock || null, now);
+  if (clock && observedClock && observedClock.maxObservedWallMs !== clock.maxObservedWallMs) {
+    store.set('policyClock', observedClock);
+  }
+  return getOfflineProtectionState(
+    lastValidation,
+    graceHours,
+    now,
+    observedClock,
+    Math.floor(process.uptime() * 1000),
+    policyClockValidatedThisProcess,
+  );
 }
 
 async function openProtectedBrowser(browserValue: unknown, siteValue: unknown) {
@@ -291,6 +398,12 @@ async function openProtectedBrowser(browserValue: unknown, siteValue: unknown) {
   const availability = getProtectionAvailability();
   if (!availability.available) {
     return { success: false, error: 'Activate a valid license and reconnect to Krypton before using protected browsing.' };
+  }
+  if (availability.enforcement?.failClosed && availability.enforcement.state === 'policy_expired') {
+    return { success: false, error: 'Cached policy is no longer valid. This device is Not Protected until it revalidates.' };
+  }
+  if (!scheduleEvaluator.isProtectionActiveNow().active) {
+    return { success: false, error: 'Protected browsing is only required during administrator-configured hours. Regular Chrome/Edge are not blocked right now.' };
   }
 
   if (!findManagedBrowserExecutable(browserValue)) {
@@ -334,13 +447,21 @@ app.whenReady().then(() => {
   setupIpcHandlers();
   createWindow();
 
-  // Schedule periodic heartbeat check every 30 minutes
   if (store.get('token')) {
-    void performBackgroundHeartbeat().then(resumeUsbMonitoringIfConsented);
+    void performBackgroundHeartbeat().then(async () => {
+      await syncEndpointProtection();
+      await resumeUsbMonitoringIfConsented();
+    });
   }
   setInterval(() => {
-    void performBackgroundHeartbeat().then(resumeUsbMonitoringIfConsented);
-  }, 30 * 60 * 1000);
+    void performBackgroundHeartbeat().then(async () => {
+      await syncEndpointProtection();
+      await resumeUsbMonitoringIfConsented();
+    });
+  }, 5 * 60 * 1000);
+  setInterval(() => {
+    void syncEndpointProtection();
+  }, 30 * 1000);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -361,7 +482,7 @@ app.on('before-quit', (event) => {
   void Promise.all([
     closeManagedBrowserSessions(),
     usbDlpMonitor.stop(),
-    networkInterceptor.stop(),
+    endpointEnforcement.stop(),
   ]).finally(() => app.quit());
 });
 
@@ -565,27 +686,31 @@ function setupIpcHandlers() {
   ipcMain.handle('desktop:get-website-protection-availability', () => getProtectionAvailability());
   ipcMain.handle('desktop:get-windows-protection-summary', () => {
     const summary = windowsAgent.getSummary();
-    const netStats = networkInterceptor.getStats();
+    const availability = getProtectionAvailability();
+    const enforcement = availability.enforcement;
     return {
       ...summary,
+      active: Boolean(enforcement?.ready),
+      noExtensionRequired: false,
       stats: {
         scannedCount: summary.stats.scannedCount,
         blockedCount: summary.stats.blockedCount,
         allowedCount: summary.stats.allowedCount,
       },
-      scheduleStatus: scheduleEvaluator.isProtectionActiveNow(),
+      scheduleStatus: availability.scheduleStatus,
       scheduleConfig: scheduleEvaluator.getConfig(),
-      networkInterceptor: netStats,
+      enforcement,
+      protectionLabel: enforcement?.ready ? 'Protected' : 'Not Protected',
     };
   });
-  ipcMain.handle('desktop:toggle-windows-protection', async (_event, enabled: unknown) => {
-    const active = windowsAgent.toggleActive(Boolean(enabled));
-    if (active) {
-      await networkInterceptor.start();
-    } else {
-      await networkInterceptor.stop();
-    }
-    return { success: true, active };
+  ipcMain.handle('desktop:toggle-windows-protection', async () => {
+    const schedule = scheduleEvaluator.isProtectionActiveNow();
+    await syncEndpointProtection();
+    return {
+      success: false,
+      active: schedule.active && getProtectionAvailability().enforcement?.ready === true,
+      error: 'A local pause control cannot override the administrator schedule. Protection follows company policy.',
+    };
   });
   ipcMain.handle('desktop:toggle-windows-target', (_event, targetId: unknown, enabled: unknown) => {
     if (typeof targetId === 'string' && typeof enabled === 'boolean') {
@@ -724,21 +849,20 @@ function setupIpcHandlers() {
 
   // Prompt scanning (local engine evaluation)
   ipcMain.handle('desktop:scan-prompt', (_, prompt: string) => {
-    // Check offline grace period
-    const lastValid = store.get('lastSuccessfulValidation');
-    const graceHours = store.get('offlineGraceHours') || 72;
-    if (lastValid) {
-      const elapsedHours = (Date.now() - new Date(lastValid).getTime()) / (1000 * 60 * 60);
-      if (elapsedHours > graceHours) {
-        return {
-          hasRisk: true,
-          highestRisk: 'CRITICAL',
-          action: 'block',
-          matches: [],
-          redactedPrompt: prompt,
-          explanation: `Offline grace period (${graceHours} hours) has expired without server contact. Prompt submission is locked until license re-validation.`,
-        };
-      }
+    const graceState = getCurrentPolicyGraceState(
+      store.get('lastSuccessfulValidation'),
+      store.get('offlineGraceHours') || 72,
+      store.get('policyClock'),
+    );
+    if (graceState !== 'valid') {
+      return {
+        hasRisk: true,
+        highestRisk: 'CRITICAL',
+        action: 'block',
+        matches: [],
+        redactedPrompt: '[redacted]',
+        explanation: `Offline grace period (${store.get('offlineGraceHours') || 72} hours) has expired without server contact. Prompt submission is locked until license re-validation.`,
+      };
     }
 
     return securityEngine.scan(prompt);
@@ -776,13 +900,19 @@ function setupIpcHandlers() {
       store.set('user', data.user);
       store.set('license', data.license);
       store.set('policy', data.policy);
-      store.set('lastSuccessfulValidation', new Date().toISOString());
       if (data.license?.offlineGraceHours) {
         store.set('offlineGraceHours', data.license.offlineGraceHours);
       }
 
       if (data.serverTime) {
         scheduleEvaluator.syncServerTime(data.serverTime);
+        const clock = recordPolicyValidation(data.serverTime, Math.floor(process.uptime() * 1000));
+        if (clock) {
+          store.set('policyClock', clock);
+          store.set('lastSuccessfulValidation', data.serverTime);
+          policyClockValidatedThisProcess = true;
+          serverTimeSynchronizedThisProcess = true;
+        }
       }
       if (data.ownership || data.schedule) {
         scheduleEvaluator.updateConfig(data.ownership, data.schedule);
@@ -791,10 +921,9 @@ function setupIpcHandlers() {
       if (data.policy) {
         securityEngine.updatePolicy(data.policy);
         windowsAgent.updateScanner(securityEngine);
-        networkInterceptor.updateScanner(securityEngine);
+        endpointEnforcement.setDomains(data.policy.protectedAiDomains);
       }
-      windowsAgent.toggleActive(true);
-      void networkInterceptor.start();
+      await syncEndpointProtection();
 
       return { success: true, ...data };
     } catch (err: any) {
@@ -827,7 +956,7 @@ function setupIpcHandlers() {
     }
 
     windowsAgent.toggleActive(false);
-    await networkInterceptor.stop();
+    await endpointEnforcement.stop();
     const token = store.get('token');
     const deviceId = store.get('deviceId');
     await usbDlpMonitor.stop();
@@ -865,6 +994,8 @@ function setupIpcHandlers() {
       }
     }
     store.clearAuth();
+    policyClockValidatedThisProcess = false;
+    serverTimeSynchronizedThisProcess = false;
     await closeManagedBrowserSessions();
     return {
       success: true,
@@ -1062,9 +1193,15 @@ async function performBackgroundHeartbeat() {
 
     const data = (await res.json()) as any;
     if (res.ok && data.valid) {
-      store.set('lastSuccessfulValidation', new Date().toISOString());
       if (data.serverTime) {
         scheduleEvaluator.syncServerTime(data.serverTime);
+        const clock = recordPolicyValidation(data.serverTime, Math.floor(process.uptime() * 1000));
+        if (clock) {
+          store.set('policyClock', clock);
+          store.set('lastSuccessfulValidation', data.serverTime);
+          policyClockValidatedThisProcess = true;
+          serverTimeSynchronizedThisProcess = true;
+        }
       }
       if (data.ownership || data.schedule) {
         scheduleEvaluator.updateConfig(data.ownership, data.schedule);
@@ -1072,19 +1209,34 @@ async function performBackgroundHeartbeat() {
       if (data.policy) {
         store.set('policy', data.policy);
         securityEngine.updatePolicy(data.policy);
+        windowsAgent.updateScanner(securityEngine);
+        endpointEnforcement.setDomains(data.policy.protectedAiDomains);
+        if (data.policy.offlineGracePeriodHours) {
+          store.set('offlineGraceHours', data.policy.offlineGracePeriodHours);
+        }
       }
+      if (data.license) {
+        store.set('license', { ...store.get('license'), ...data.license });
+      }
+      if (data.offlineGraceHours) {
+        store.set('offlineGraceHours', data.offlineGraceHours);
+      }
+      await syncEndpointProtection();
       return { valid: true, ...data };
     } else {
       console.warn('[DesktopHeartbeat] Heartbeat validation failed:', data);
+      store.set('license', { ...store.get('license'), status: data.status || 'inactive' });
       await closeManagedBrowserSessions();
       await usbDlpMonitor.stop();
       store.set('usbMonitoringEnabled', false);
+      await syncEndpointProtection();
       return { valid: false, error: data.message || 'Validation failed' };
     }
   } catch (err: any) {
     console.warn('[DesktopHeartbeat] Heartbeat network check failed, entering offline grace window:', err.message);
     const protectionAvailable = getProtectionAvailability().available;
     if (!protectionAvailable) await closeManagedBrowserSessions();
+    await syncEndpointProtection();
     if (usbDlpMonitor.getStatus().enabled) {
       await usbDlpMonitor.stop();
       usbDlpMonitor.setUnavailable('Monitoring is paused because the API is unreachable; USB events are not queued while offline.');

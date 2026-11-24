@@ -1,7 +1,6 @@
 import * as http from 'http';
 import * as net from 'net';
 import * as stream from 'stream';
-import { exec } from 'child_process';
 import { PromptSecurityEngine } from '../engine/scanner';
 import { PromptScanResult } from '@krypton/shared';
 import { Notification } from 'electron';
@@ -66,7 +65,6 @@ export class LocalNetworkInterceptor {
 
       this.server.listen(this.port, '127.0.0.1', () => {
         this.isRunning = true;
-        this.enableWindowsSystemProxy(this.port);
         resolve({ success: true, port: this.port });
       });
     });
@@ -74,8 +72,6 @@ export class LocalNetworkInterceptor {
 
   public async stop(): Promise<void> {
     if (!this.isRunning && !this.server) return;
-
-    this.disableWindowsSystemProxy();
 
     return new Promise((resolve) => {
       if (this.server) {
@@ -248,26 +244,6 @@ export class LocalNetworkInterceptor {
 
     clientSocket.on('error', () => {
       serverSocket.destroy();
-    });
-  }
-
-  private enableWindowsSystemProxy(port: number): void {
-    if (process.platform !== 'win32') return;
-
-    const cmdEnable = `reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyEnable /t REG_DWORD /d 1 /f`;
-    const cmdServer = `reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyServer /t REG_SZ /d "127.0.0.1:${port}" /f`;
-
-    exec(`${cmdEnable} && ${cmdServer}`, (err) => {
-      if (err) console.warn('[NetworkInterceptor] Could not set Windows proxy registry:', err.message);
-    });
-  }
-
-  private disableWindowsSystemProxy(): void {
-    if (process.platform !== 'win32') return;
-
-    const cmdDisable = `reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyEnable /t REG_DWORD /d 0 /f`;
-    exec(cmdDisable, (err) => {
-      if (err) console.warn('[NetworkInterceptor] Could not reset Windows proxy registry:', err.message);
     });
   }
 

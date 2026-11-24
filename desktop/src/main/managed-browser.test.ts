@@ -7,6 +7,8 @@ describe('managed browser request inspection', () => {
       '--remote-debugging-address=127.0.0.1',
       '--remote-debugging-port=0',
       '--user-data-dir=C:\\Krypton\\profile',
+      '--proxy-server=direct://',
+      '--proxy-bypass-list=<-loopback>',
       '--load-extension=C:\\Krypton\\extension',
       '--no-first-run',
       '--no-default-browser-check',

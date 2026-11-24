@@ -1066,7 +1066,7 @@ Add-Type -TypeDefinition $source -ReferencedAssemblies System.Windows.Forms, UIA
     return {
       active: this.active,
       platform: process.platform,
-      noExtensionRequired: true,
+      noExtensionRequired: false,
       inputMonitorReady: this.inputMonitorReady,
       targets: [...this.targets],
       stats: {

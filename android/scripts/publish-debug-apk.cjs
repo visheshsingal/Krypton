@@ -45,8 +45,9 @@ fs.writeFileSync(
     signatureStatus: 'debug-keystore',
     limitations: [
       'Test build only; not signed with a production release key.',
-      'Accessibility scanning checks editable text locally and may not work in every app.',
-      'The app warns about detected secrets but cannot guarantee blocking submissions.',
+      'The user must enable and select Krypton as the keyboard; this is not device-wide enforcement.',
+      'Text entered using another keyboard, paste, dictation, or app-specific editors may bypass checks.',
+      'Recognized text is checked locally and can be allowed once only when administrator policy permits.',
       'Text is not stored or transmitted by this app.',
     ],
   }, null, 2)}\n`,

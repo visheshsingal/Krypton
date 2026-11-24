@@ -87,16 +87,7 @@ export function createPromptSubmissionEvent(
   };
 }
 
-export function getOfflineProtectionState(
-  lastSuccessfulValidation: string | undefined,
-  graceHours: number,
-  now = Date.now(),
-): 'valid' | 'expired' {
-  if (!lastSuccessfulValidation) return 'expired';
-  const validatedAt = Date.parse(lastSuccessfulValidation);
-  if (!Number.isFinite(validatedAt) || validatedAt > now) return 'expired';
-  return now - validatedAt <= graceHours * 60 * 60 * 1000 ? 'valid' : 'expired';
-}
+export { getOfflineProtectionState } from './offline-policy-clock';
 
 export function isRiskAtLeast(
   risk: string,

@@ -28,10 +28,10 @@ describe('WindowsProtectionAgent', () => {
     agent.stopClipboardMonitor();
   });
 
-  it('initializes with 5 default protected targets and extension-free status', () => {
+  it('initializes with 5 default protected targets and does not claim extension-free coverage', () => {
     const summary = agent.getSummary();
     expect(summary.active).toBe(true);
-    expect(summary.noExtensionRequired).toBe(true);
+    expect(summary.noExtensionRequired).toBe(false);
     expect(summary.inputMonitorReady).toBe(false);
     expect(summary.targets.length).toBe(5);
     expect(summary.targets.map((t) => t.id)).toEqual([

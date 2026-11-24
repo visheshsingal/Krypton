@@ -1,8 +1,8 @@
 package com.kryptonsecurity.mobile;
 
-import android.accessibilityservice.AccessibilityServiceInfo;
 import android.app.Activity;
 import android.content.ComponentName;
+import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -10,135 +10,297 @@ import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.view.Gravity;
-import android.view.View;
-import android.view.accessibility.AccessibilityManager;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
-import java.util.List;
+import org.json.JSONObject;
+
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public final class MainActivity extends Activity {
-    private static final int BACKGROUND = Color.rgb(7, 11, 20);
-    private static final int PANEL = Color.rgb(11, 18, 32);
-    private static final int CYAN = Color.rgb(56, 189, 248);
-    private static final int GREEN = Color.rgb(52, 211, 153);
-    private static final int MUTED = Color.rgb(148, 163, 184);
-    private static final int WHITE = Color.rgb(248, 250, 252);
+    private static final int BLUE = Color.rgb(37, 99, 235);
+    private static final int INK = Color.rgb(15, 23, 42);
+    private static final int MUTED = Color.rgb(100, 116, 139);
+    private static final int BORDER = Color.rgb(226, 232, 240);
+    private static final String PREFS = "krypton_android";
+    private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
-    private TextView status;
-    private Button setupButton;
+    private EditText emailField;
+    private EditText passwordField;
+    private TextView message;
+    private Button submitButton;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        getWindow().setStatusBarColor(BACKGROUND);
-        getWindow().setNavigationBarColor(BACKGROUND);
-        showSetup();
+        getWindow().setStatusBarColor(Color.WHITE);
+        getWindow().setNavigationBarColor(Color.WHITE);
+        getWindow().getDecorView().setSystemUiVisibility(
+                android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+                        | android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+        );
+        render();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        updateStatus();
+        if (hasSession()) refreshPolicy();
+        else render();
     }
 
-    private void showSetup() {
+    @Override
+    protected void onDestroy() {
+        executor.shutdown();
+        super.onDestroy();
+    }
+
+    private boolean hasSession() {
+        try {
+            return SecureSessionStore.accessToken(this) != null;
+        } catch (Exception error) {
+            SecureSessionStore.clear(this);
+            AndroidPolicy.invalidate(this);
+            return false;
+        }
+    }
+
+    private void render() {
+        if (hasSession()) renderDashboard();
+        else renderSignIn();
+    }
+
+    private void renderSignIn() {
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
-        scroll.setBackgroundColor(BACKGROUND);
+        scroll.setBackgroundColor(Color.WHITE);
+
+        LinearLayout page = page();
+        LinearLayout brand = brand();
+        page.addView(brand, params(0, 0, 0, 36));
 
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
         content.setGravity(Gravity.CENTER_VERTICAL);
-        content.setPadding(dp(24), dp(28), dp(24), dp(28));
+        LinearLayout.LayoutParams contentParams = new LinearLayout.LayoutParams(-1, 0, 1f);
 
-        LinearLayout panel = new LinearLayout(this);
-        panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setPadding(dp(22), dp(26), dp(22), dp(24));
-        panel.setBackground(rounded(PANEL, 22, Color.rgb(30, 41, 59)));
+        TextView eyebrow = text("ANDROID PROTECTION", 13, BLUE, true);
+        content.addView(eyebrow, params(0, 0, 0, 8));
+        content.addView(text("Sign in to Krypton", 30, INK, true), params(0, 0, 0, 8));
+        content.addView(text(
+                "Connect this phone to your company policy. Krypton scans text typed with its optional keyboard on this device.",
+                15, MUTED, false), params(0, 0, 0, 24));
 
-        panel.addView(label("KRYPTON SECURITY", 12, CYAN, true), margin(0, 0, 0, 10));
-        panel.addView(label("Set up Android protection", 25, WHITE, true), margin(0, 0, 0, 12));
-        panel.addView(label(
-                "Enable Krypton in Android Accessibility settings to check text as you type in other apps.",
-                15, MUTED, false), margin(0, 0, 0, 18));
+        LinearLayout card = card();
+        card.addView(text("Company account", 18, INK, true), params(0, 0, 0, 4));
+        card.addView(text("Use the email and password provided by your company.", 13, MUTED, false), params(0, 0, 0, 20));
 
-        status = label("", 14, MUTED, true);
-        status.setPadding(dp(14), dp(13), dp(14), dp(13));
-        status.setBackground(rounded(Color.rgb(15, 23, 42), 12, Color.rgb(51, 65, 85)));
-        panel.addView(status, margin(0, 0, 0, 18));
+        emailField = input("Work email", false);
+        emailField.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+        emailField.setSingleLine(true);
+        card.addView(emailField, params(0, 0, 0, 12));
 
-        setupButton = button("Open Accessibility Settings", true);
-        panel.addView(setupButton, margin(0, 0, 0, 18));
-        setupButton.setOnClickListener(view -> openProtectionSettings());
+        passwordField = input("Password", true);
+        passwordField.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        passwordField.setSingleLine(true);
+        card.addView(passwordField, params(0, 0, 0, 16));
 
-        panel.addView(label("WHAT IT CHECKS", 11, CYAN, true), margin(0, 0, 0, 7));
-        panel.addView(label(
-                "Krypton checks editable text fields for common API keys, passwords, and other recognizable secrets. Password-entry fields are skipped.",
-                13, MUTED, false), margin(0, 0, 0, 16));
+        message = text("", 13, Color.rgb(185, 28, 28), false);
+        card.addView(message, params(0, 0, 0, 8));
 
-        panel.addView(label("YOUR PRIVACY", 11, CYAN, true), margin(0, 0, 0, 7));
-        panel.addView(label(
-                "Scanning happens on this phone. Typed text is not saved or sent to Krypton. Android requires you to enable or disable this accessibility service yourself.",
-                13, MUTED, false), margin(0, 0, 0, 16));
+        submitButton = button("Continue", true);
+        card.addView(submitButton, params(0, 0, 0, 4));
+        submitButton.setOnClickListener(view -> signIn());
+        content.addView(card, new LinearLayout.LayoutParams(-1, -2));
 
-        TextView limitation = label(
-                "Important: this is best-effort warning, not guaranteed blocking. Some apps hide text from Android accessibility or submit before a warning appears. Review detections before sending sensitive content.",
-                12, Color.rgb(253, 230, 138), false);
-        limitation.setPadding(dp(13), dp(12), dp(13), dp(12));
-        limitation.setBackground(rounded(Color.rgb(48, 37, 17), 12, Color.rgb(120, 83, 25)));
-        panel.addView(limitation);
-
-        content.addView(panel, new LinearLayout.LayoutParams(-1, -2));
-        scroll.addView(content);
+        page.addView(content, contentParams);
+        TextView note = text("Your typed text is inspected locally and is not sent to Krypton.", 12, MUTED, false);
+        page.addView(note, params(0, 28, 0, 0));
+        scroll.addView(page);
         setContentView(scroll);
     }
 
-    private void updateStatus() {
-        if (status == null || setupButton == null) return;
-        boolean enabled = isProtectionEnabled();
-        status.setText(enabled
-                ? "Protection is enabled · scanning editable text locally"
-                : "Protection is off · enable Krypton in Android settings");
-        status.setTextColor(enabled ? GREEN : Color.rgb(253, 230, 138));
-        setupButton.setText(enabled ? "Manage Accessibility Settings" : "Open Accessibility Settings");
+    private void renderDashboard() {
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setBackgroundColor(Color.WHITE);
+        LinearLayout page = page();
+        page.addView(brand(), params(0, 0, 0, 34));
+
+        page.addView(text("Device overview", 13, BLUE, true), params(0, 0, 0, 8));
+        page.addView(text("Krypton keyboard", 30, INK, true), params(0, 0, 0, 8));
+        page.addView(text(
+                "Sensitive text is checked as you type. If a match is found, the keyboard removes it from the field and offers the choices allowed by company policy.",
+                15, MUTED, false), params(0, 0, 0, 22));
+
+        LinearLayout statusCard = card();
+        TextView status = text("Checking company policy…", 15, INK, true);
+        status.setTag("policy-status");
+        statusCard.addView(status, params(0, 0, 0, 8));
+        TextView schedule = text(AndroidPolicy.describeSchedule(this), 13, MUTED, false);
+        schedule.setTag("policy-schedule");
+        statusCard.addView(schedule);
+        page.addView(statusCard, params(0, 0, 0, 18));
+
+        TextView setupTitle = text("Enable the keyboard", 18, INK, true);
+        page.addView(setupTitle, params(0, 2, 0, 6));
+        page.addView(text(
+                "Android requires you to enable Krypton and select it as your keyboard. Krypton cannot change this setting for you.",
+                13, MUTED, false), params(0, 0, 0, 16));
+
+        Button enable = button("Enable Krypton keyboard", true);
+        page.addView(enable, params(0, 0, 0, 10));
+        enable.setOnClickListener(view -> startActivity(new Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)));
+
+        Button choose = button("Choose keyboard", false);
+        page.addView(choose, params(0, 0, 0, 22));
+        choose.setOnClickListener(view -> {
+            InputMethodManager manager = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+            if (manager != null) manager.showInputMethodPicker();
+        });
+
+        LinearLayout limitation = card();
+        limitation.addView(text("What this does not cover", 15, INK, true), params(0, 0, 0, 7));
+        limitation.addView(text(
+                "The keyboard only scans text entered through Krypton while the administrator schedule is active. Pasting, dictation, other keyboards, screenshots, and app-specific submit actions may bypass it. Use the protected keyboard for supported coverage; this is not a system-wide guarantee.",
+                13, MUTED, false));
+        page.addView(limitation, params(0, 0, 0, 18));
+
+        TextView identity = text(
+                getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("userEmail", ""),
+                12, MUTED, false);
+        page.addView(identity, params(0, 4, 0, 0));
+        scroll.addView(page);
+        setContentView(scroll);
+        refreshPolicy();
     }
 
-    private boolean isProtectionEnabled() {
-        AccessibilityManager manager =
-                (AccessibilityManager) getSystemService(ACCESSIBILITY_SERVICE);
-        if (manager == null) return false;
-        List<AccessibilityServiceInfo> services =
-                manager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK);
-        for (AccessibilityServiceInfo service : services) {
-            if (service.getId() != null &&
-                    service.getId().contains(getPackageName()) &&
-                    service.getId().endsWith(PromptGuardService.class.getSimpleName())) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private void openProtectionSettings() {
-        Intent serviceSettings = new Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS")
-                .putExtra(
-                        "android.provider.extra.ACCESSIBILITY_SERVICE_COMPONENT_NAME",
-                        new ComponentName(this, PromptGuardService.class).flattenToString()
-                );
-        if (serviceSettings.resolveActivity(getPackageManager()) != null) {
-            startActivity(serviceSettings);
+    private void signIn() {
+        String email = emailField.getText().toString().trim();
+        String password = passwordField.getText().toString();
+        if (email.isEmpty() || password.isEmpty()) {
+            message.setText("Enter your company email and password.");
             return;
         }
 
-        startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+        setBusy(true);
+        executor.execute(() -> {
+            try {
+                JSONObject result = KryptonApi.signInAndActivate(this, email, password);
+                runOnUiThread(() -> {
+                    if (message != null) message.setText("");
+                    setBusy(false);
+                    renderDashboard();
+                });
+            } catch (Exception error) {
+                runOnUiThread(() -> {
+                    setBusy(false);
+                    if (message != null) message.setText(error.getMessage());
+                });
+            }
+        });
     }
 
-    private TextView label(String text, int size, int color, boolean bold) {
+    private void refreshPolicy() {
+        if (!hasSession()) return;
+        executor.execute(() -> {
+            try {
+                KryptonApi.refreshPolicy(this);
+            } catch (Exception error) {
+                android.util.Log.w("KryptonAndroid", "Policy refresh failed: " + error.getMessage());
+            }
+            runOnUiThread(() -> {
+                if (hasSession()) updatePolicyStatus();
+                else renderSignIn();
+            });
+        });
+    }
+
+    private void updatePolicyStatus() {
+        if (!(getWindow().getDecorView() instanceof android.view.ViewGroup root)) return;
+        TextView status = root.findViewWithTag("policy-status");
+        TextView schedule = root.findViewWithTag("policy-schedule");
+        if (status == null || schedule == null) return;
+
+        boolean active = AndroidPolicy.isActive(this);
+        status.setText(active ? "Policy active · keyboard checks enabled" : "Policy inactive · checks are paused");
+        status.setTextColor(active ? Color.rgb(29, 78, 216) : Color.rgb(180, 83, 9));
+        schedule.setText(AndroidPolicy.describeSchedule(this));
+    }
+
+    private void setBusy(boolean busy) {
+        if (submitButton == null) return;
+        submitButton.setEnabled(!busy);
+        submitButton.setText(busy ? "Connecting…" : "Continue");
+    }
+
+    private LinearLayout page() {
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setPadding(dp(24), dp(28), dp(24), dp(28));
+        page.setMinimumHeight(getResources().getDisplayMetrics().heightPixels);
+        return page;
+    }
+
+    private LinearLayout brand() {
+        LinearLayout brand = new LinearLayout(this);
+        brand.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout mark = new LinearLayout(this);
+        mark.setGravity(Gravity.CENTER);
+        mark.setBackground(rounded(BLUE, 12, BLUE));
+        TextView icon = text("K", 19, Color.WHITE, true);
+        mark.addView(icon);
+        brand.addView(mark, new LinearLayout.LayoutParams(dp(38), dp(38)));
+        TextView title = text("Krypton", 16, INK, true);
+        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(-2, -2);
+        titleParams.leftMargin = dp(11);
+        brand.addView(title, titleParams);
+        return brand;
+    }
+
+    private LinearLayout card() {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(20), dp(20), dp(20), dp(20));
+        card.setBackground(rounded(Color.WHITE, 18, BORDER));
+        return card;
+    }
+
+    private EditText input(String hint, boolean secret) {
+        EditText field = new EditText(this);
+        field.setTextSize(15);
+        field.setTextColor(INK);
+        field.setHintTextColor(Color.rgb(148, 163, 184));
+        field.setHint(hint);
+        field.setPadding(dp(13), 0, dp(13), 0);
+        field.setBackground(rounded(Color.WHITE, 10, Color.rgb(203, 213, 225)));
+        field.setMinHeight(dp(50));
+        field.setSingleLine(true);
+        field.setSelectAllOnFocus(false);
+        if (secret) field.setTypeface(Typeface.DEFAULT);
+        return field;
+    }
+
+    private Button button(String title, boolean primary) {
+        Button button = new Button(this);
+        button.setText(title);
+        button.setAllCaps(false);
+        button.setTextSize(14);
+        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        button.setTextColor(primary ? Color.WHITE : INK);
+        button.setMinHeight(dp(48));
+        button.setBackground(rounded(primary ? BLUE : Color.WHITE, 10, primary ? BLUE : BORDER));
+        return button;
+    }
+
+    private TextView text(String value, int size, int color, boolean bold) {
         TextView view = new TextView(this);
-        view.setText(text);
+        view.setText(value);
         view.setTextSize(size);
         view.setTextColor(color);
         view.setLineSpacing(dp(3), 1f);
@@ -146,27 +308,15 @@ public final class MainActivity extends Activity {
         return view;
     }
 
-    private Button button(String text, boolean primary) {
-        Button view = new Button(this);
-        view.setText(text);
-        view.setAllCaps(false);
-        view.setTextSize(14);
-        view.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        view.setTextColor(primary ? BACKGROUND : WHITE);
-        view.setBackground(rounded(primary ? CYAN : PANEL, 12,
-                primary ? CYAN : Color.rgb(51, 65, 85)));
-        return view;
-    }
-
     private GradientDrawable rounded(int fill, int radius, int stroke) {
-        GradientDrawable drawable = new GradientDrawable();
-        drawable.setColor(fill);
-        drawable.setCornerRadius(dp(radius));
-        drawable.setStroke(dp(1), stroke);
-        return drawable;
+        GradientDrawable shape = new GradientDrawable();
+        shape.setColor(fill);
+        shape.setCornerRadius(dp(radius));
+        shape.setStroke(dp(1), stroke);
+        return shape;
     }
 
-    private LinearLayout.LayoutParams margin(int left, int top, int right, int bottom) {
+    private LinearLayout.LayoutParams params(int left, int top, int right, int bottom) {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
         params.setMargins(dp(left), dp(top), dp(right), dp(bottom));
         return params;

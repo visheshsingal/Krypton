@@ -239,6 +239,7 @@ async function createWindowsPackage(installerPath, installerName, installerCheck
 }
 
 async function main() {
+  const buildOnly = process.argv.includes('--build-only');
   if (process.env.KRYPTON_REQUIRE_CODE_SIGNING === 'true' &&
       !process.env.CSC_LINK && !process.env.CSC_NAME) {
     throw new Error('Code signing was required, but no CSC_LINK or CSC_NAME certificate is configured.');
@@ -285,6 +286,14 @@ async function main() {
     const signatureStatus = getSignatureStatus(installerPath);
     if (process.env.KRYPTON_REQUIRE_CODE_SIGNING === 'true' && signatureStatus !== 'signed') {
       throw new Error(`Code signing is required, but the installer signature status is ${signatureStatus}.`);
+    }
+
+    if (buildOnly) {
+      console.log(`Created the Windows installer without publishing release files: ${installerPath}`);
+      if (signatureStatus === 'unsigned') {
+        console.warn('This installer is unsigned; Windows SmartScreen may show a publisher warning.');
+      }
+      return;
     }
 
     const packageInfo = await createWindowsPackage(installerPath, installerName, installerChecksum);

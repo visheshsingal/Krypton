@@ -63,6 +63,62 @@ describe('TamperProofScheduleEvaluator', () => {
     expect(sundayStatus.reason).toContain('Excluded day');
   });
 
+  test('Overnight intervals stay active across midnight in the admin timezone', () => {
+    evaluator.syncServerTime('2026-11-18T23:30:00.000Z', 10);
+    evaluator.updateConfig('personal', {
+      enabled: true,
+      workDays: [1, 2, 3, 4, 5],
+      startTime: '22:00',
+      endTime: '06:00',
+      timezone: 'UTC',
+    });
+    expect(evaluator.isProtectionActiveNow(10).active).toBe(true);
+    expect(evaluator.isProtectionActiveNow(10 + 2 * 3600).active).toBe(true);
+    expect(evaluator.isProtectionActiveNow(10 + 8 * 3600).active).toBe(false);
+  });
+
+  test('overnight hours use the starting workday when they cross into an excluded day', () => {
+    evaluator.syncServerTime('2026-11-20T23:30:00.000Z', 10);
+    evaluator.updateConfig('personal', {
+      enabled: true,
+      workDays: [1, 2, 3, 4, 5],
+      startTime: '22:00',
+      endTime: '06:00',
+      timezone: 'UTC',
+    });
+    expect(evaluator.isProtectionActiveNow(10).active).toBe(true);
+    expect(evaluator.isProtectionActiveNow(10 + 3 * 3600).active).toBe(true);
+    expect(evaluator.isProtectionActiveNow(10 + 7 * 3600).active).toBe(false);
+  });
+
+  test('DST spring-forward uses the IANA timezone instead of local Windows time', () => {
+    evaluator.syncServerTime('2026-03-08T06:30:00.000Z', 20);
+    evaluator.updateConfig('personal', {
+      enabled: true,
+      workDays: [7],
+      startTime: '01:00',
+      endTime: '03:00',
+      timezone: 'America/New_York',
+    });
+    const status = evaluator.isProtectionActiveNow(20);
+    expect(status.active).toBe(true);
+    expect(status.authoritativeTime).toBe('2026-03-08T06:30:00.000Z');
+  });
+
+  test('Invalid timezone fails closed instead of enabling protection', () => {
+    evaluator.syncServerTime('2026-11-18T10:00:00.000Z', 1);
+    evaluator.updateConfig('personal', {
+      enabled: true,
+      workDays: [1, 2, 3, 4, 5],
+      startTime: '09:00',
+      endTime: '18:00',
+      timezone: 'Not/AZone',
+    });
+    const status = evaluator.isProtectionActiveNow(1);
+    expect(status.active).toBe(false);
+    expect(status.reason).toContain('fail-closed');
+  });
+
   test('Tamper proof: User changing system clock has ZERO effect on authoritative time', () => {
     const originalServerTime = '2026-11-18T10:00:00.000Z';
     evaluator.syncServerTime(originalServerTime, 50);

@@ -57,6 +57,11 @@ export async function POST(req: NextRequest) {
       status: 'active',
       policy,
       serverTime: new Date().toISOString(),
+      license: {
+        status: license.status,
+        expiresAt: license.expiresAt.toISOString(),
+        offlineGraceHours: license.offlineGraceHours || 72,
+      },
       ownership: device.ownership || 'company',
       schedule: device.schedule || {
         enabled: false,
