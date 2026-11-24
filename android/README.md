@@ -9,7 +9,9 @@ Krypton Android uses a custom, user-enabled input method (keyboard) to check tex
 3. Return to Krypton, tap **Select Krypton keyboard**, and choose it as the active keyboard.
 4. Confirm the app reports that policy is active. The keyboard displays whether checks are active whenever it is open.
 
-The keyboard compares text entered through it against common API-key, private-key, database-URL, and password-like patterns. When a match is found, the matching text is removed before it remains in the field. The user can keep it blocked or choose **Allow once** if the administrator's policy permits bypassing warnings. Password-entry fields are not scanned.
+The keyboard compares text entered through it against common API-key, private-key, database-URL, and labeled-password patterns, plus recognizable email, phone, Aadhaar, PAN, SSN, and valid payment-card number formats. Secret and PII checks follow the corresponding administrator policy switches. When a match is found, only the matching value is removed before it remains in the field. The user can keep it blocked or choose **Allow once** if the administrator's policy permits bypassing warnings. Password-entry fields and Krypton's own sign-in fields are not scanned.
+
+Ordinary questions are intentionally allowed. This on-device pattern detector does not understand prompt meaning or identify every confidential business detail, and is not a semantic classifier. The app's dashboard includes a synthetic test phrase to confirm that detection and the policy-based choice bar work.
 
 Policy timing uses the administrator's schedule and server time. The app refreshes policy on sign-in and periodically while the keyboard is in use. A reboot or expired offline validation requires the app to reconnect before policy is considered active.
 
@@ -35,7 +37,7 @@ The local debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`. T
 1. Install the debug APK, open Krypton, and sign in using a test account.
 2. Enable and select Krypton keyboard in Android settings.
 3. Confirm the keyboard reports the administrator policy as active.
-4. In a test text field, type a synthetic matching value such as `sk-proj-ABCDEFGHIJKLMNOPQRSTUVWXYZ123456`. Confirm it is removed and the policy-appropriate block/allow choices appear.
+4. In a test text field, type the dashboard sample `My password is Demo-Pass-123!` or a synthetic API key such as `sk-proj-ABCDEFGHIJKLMNOPQRSTUVWXYZ123456`. Confirm the detected value is removed and the policy-appropriate block/allow choices appear.
 5. Test the administrator schedule outside and inside its active window, and verify policy status changes accordingly.
 6. Confirm password fields are identified as not scanned.
 

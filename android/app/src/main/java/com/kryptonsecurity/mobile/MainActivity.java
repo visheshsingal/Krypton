@@ -11,6 +11,7 @@ import android.os.Bundle;
 import android.provider.Settings;
 import android.view.Gravity;
 import android.view.inputmethod.InputMethodManager;
+import android.view.inputmethod.InputMethodInfo;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -128,55 +129,87 @@ public final class MainActivity extends Activity {
     private void renderDashboard() {
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
-        scroll.setBackgroundColor(Color.WHITE);
+        scroll.setBackgroundColor(Color.rgb(248, 250, 252));
         LinearLayout page = page();
-        page.addView(brand(), params(0, 0, 0, 34));
+        page.setPadding(dp(20), dp(18), dp(20), dp(28));
+        page.addView(brand(), params(0, 0, 0, 22));
 
-        page.addView(text("Device overview", 13, BLUE, true), params(0, 0, 0, 8));
-        page.addView(text("Krypton keyboard", 30, INK, true), params(0, 0, 0, 8));
-        page.addView(text(
-                "Sensitive text is checked as you type. If a match is found, the keyboard removes it from the field and offers the choices allowed by company policy.",
-                15, MUTED, false), params(0, 0, 0, 22));
+        LinearLayout hero = new LinearLayout(this);
+        hero.setOrientation(LinearLayout.VERTICAL);
+        hero.setPadding(dp(20), dp(20), dp(20), dp(20));
+        hero.setBackground(rounded(Color.rgb(15, 23, 42), 18, Color.rgb(15, 23, 42)));
+        hero.addView(text("ANDROID DEVICE PROTECTION", 11, Color.rgb(147, 197, 253), true), params(0, 0, 0, 10));
+        hero.addView(text("Keep sensitive data\nout of AI chats.", 27, Color.WHITE, true), params(0, 0, 0, 9));
+        hero.addView(text(
+                "Krypton checks for recognizable secrets and personal data as you type with this keyboard.",
+                14, Color.rgb(203, 213, 225), false));
+        page.addView(hero, params(0, 0, 0, 16));
 
         LinearLayout statusCard = card();
-        TextView status = text("Checking company policy…", 15, INK, true);
+        statusCard.setBackground(rounded(Color.WHITE, 16, BORDER));
+        statusCard.addView(text("PROTECTION STATUS", 11, MUTED, true), params(0, 0, 0, 12));
+        TextView status = text("Checking company policy…", 16, INK, true);
         status.setTag("policy-status");
-        statusCard.addView(status, params(0, 0, 0, 8));
+        statusCard.addView(status, params(0, 0, 0, 7));
         TextView schedule = text(AndroidPolicy.describeSchedule(this), 13, MUTED, false);
         schedule.setTag("policy-schedule");
-        statusCard.addView(schedule);
-        page.addView(statusCard, params(0, 0, 0, 18));
+        statusCard.addView(schedule, params(0, 0, 0, 12));
+        TextView keyboardStatus = text("", 12, BLUE, true);
+        keyboardStatus.setTag("keyboard-status");
+        statusCard.addView(keyboardStatus);
+        page.addView(statusCard, params(0, 0, 0, 16));
 
-        TextView setupTitle = text("Enable the keyboard", 18, INK, true);
-        page.addView(setupTitle, params(0, 2, 0, 6));
-        page.addView(text(
-                "Android requires you to enable Krypton and select it as your keyboard. Krypton cannot change this setting for you.",
-                13, MUTED, false), params(0, 0, 0, 16));
+        LinearLayout setup = card();
+        setup.setBackground(rounded(Color.WHITE, 16, BORDER));
+        setup.addView(text("Finish keyboard setup", 17, INK, true), params(0, 0, 0, 5));
+        setup.addView(text(
+                "Android requires you to enable Krypton and then select it as your active keyboard.",
+                13, MUTED, false), params(0, 0, 0, 14));
 
-        Button enable = button("Enable Krypton keyboard", true);
-        page.addView(enable, params(0, 0, 0, 10));
+        Button enable = button("Open keyboard settings", true);
+        setup.addView(enable, params(0, 0, 0, 9));
         enable.setOnClickListener(view -> startActivity(new Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)));
 
-        Button choose = button("Choose keyboard", false);
-        page.addView(choose, params(0, 0, 0, 22));
+        Button choose = button("Select Krypton keyboard", false);
+        setup.addView(choose);
         choose.setOnClickListener(view -> {
             InputMethodManager manager = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
             if (manager != null) manager.showInputMethodPicker();
         });
+        page.addView(setup, params(0, 0, 0, 16));
 
-        LinearLayout limitation = card();
-        limitation.addView(text("What this does not cover", 15, INK, true), params(0, 0, 0, 7));
-        limitation.addView(text(
-                "The keyboard only scans text entered through Krypton while the administrator schedule is active. Pasting, dictation, other keyboards, screenshots, and app-specific submit actions may bypass it. Use the protected keyboard for supported coverage; this is not a system-wide guarantee.",
-                13, MUTED, false));
-        page.addView(limitation, params(0, 0, 0, 18));
+        LinearLayout detection = card();
+        detection.setBackground(rounded(Color.WHITE, 16, BORDER));
+        detection.addView(text("What Krypton checks", 17, INK, true), params(0, 0, 0, 7));
+        detection.addView(text(
+                "API keys, passwords and database credentials, plus recognizable emails, phone numbers, and selected government/payment ID formats.",
+                13, MUTED, false), params(0, 0, 0, 10));
+        detection.addView(text(
+                "Ordinary questions are allowed. Krypton does not understand every prompt or identify all confidential context; only detected patterns are held for your choice.",
+                13, INK, false), params(0, 0, 0, 10));
+        detection.addView(text(
+                "Checks happen on-device. Pasting, dictation, another keyboard, or app-specific editors may bypass them.",
+                12, MUTED, false));
+        page.addView(detection, params(0, 0, 0, 16));
+
+        LinearLayout test = card();
+        test.setBackground(rounded(Color.rgb(239, 246, 255), 16, Color.rgb(191, 219, 254)));
+        test.addView(text("TRY A SAFE TEST", 11, BLUE, true), params(0, 0, 0, 7));
+        test.addView(text(
+                "With Krypton selected in a text field, type: My password is Demo-Pass-123!",
+                13, INK, true), params(0, 0, 0, 6));
+        test.addView(text(
+                "The sensitive value should be removed. Allow once appears only when company policy permits it; otherwise it stays blocked.",
+                12, MUTED, false));
+        page.addView(test, params(0, 0, 0, 18));
 
         TextView identity = text(
                 getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("userEmail", ""),
                 12, MUTED, false);
-        page.addView(identity, params(0, 4, 0, 0));
+        page.addView(identity, params(0, 3, 0, 0));
         scroll.addView(page);
         setContentView(scroll);
+        updateKeyboardStatus();
         refreshPolicy();
     }
 
@@ -228,9 +261,47 @@ public final class MainActivity extends Activity {
         if (status == null || schedule == null) return;
 
         boolean active = AndroidPolicy.isActive(this);
-        status.setText(active ? "Policy active · keyboard checks enabled" : "Policy inactive · checks are paused");
-        status.setTextColor(active ? Color.rgb(29, 78, 216) : Color.rgb(180, 83, 9));
+        boolean checksEnabled = AndroidPolicy.isSecretDetectionEnabled(this)
+                || AndroidPolicy.isPiiDetectionEnabled(this);
+        status.setText(active
+                ? checksEnabled ? "Protection active" : "Policy active · checks disabled by admin"
+                : "Protection inactive · checks paused");
+        status.setTextColor(active && checksEnabled ? Color.rgb(29, 78, 216) : Color.rgb(180, 83, 9));
         schedule.setText(AndroidPolicy.describeSchedule(this));
+        updateKeyboardStatus();
+    }
+
+    private void updateKeyboardStatus() {
+        if (!(getWindow().getDecorView() instanceof android.view.ViewGroup root)) return;
+        TextView status = root.findViewWithTag("keyboard-status");
+        if (status == null) return;
+        boolean enabled = isKryptonKeyboardEnabled();
+        boolean selected = isKryptonKeyboardSelected();
+        if (selected) {
+            status.setText("Krypton is selected · checks run while policy is active");
+            status.setTextColor(Color.rgb(29, 78, 216));
+        } else if (enabled) {
+            status.setText("Keyboard enabled · select Krypton to use it");
+            status.setTextColor(Color.rgb(180, 83, 9));
+        } else {
+            status.setText("Keyboard not enabled yet");
+            status.setTextColor(Color.rgb(180, 83, 9));
+        }
+    }
+
+    private boolean isKryptonKeyboardEnabled() {
+        InputMethodManager manager = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+        if (manager == null) return false;
+        String kryptonId = new ComponentName(this, KryptonInputMethodService.class).flattenToString();
+        for (InputMethodInfo method : manager.getEnabledInputMethodList()) {
+            if (kryptonId.equals(method.getId())) return true;
+        }
+        return false;
+    }
+
+    private boolean isKryptonKeyboardSelected() {
+        String selected = Settings.Secure.getString(getContentResolver(), Settings.Secure.DEFAULT_INPUT_METHOD);
+        return new ComponentName(this, KryptonInputMethodService.class).flattenToString().equals(selected);
     }
 
     private void setBusy(boolean busy) {

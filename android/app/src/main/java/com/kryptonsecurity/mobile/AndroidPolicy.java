@@ -30,8 +30,12 @@ final class AndroidPolicy {
         JSONObject schedule = response.optJSONObject("schedule");
         if (schedule == null) schedule = new JSONObject();
         JSONObject securityPolicy = response.optJSONObject("policy");
-        boolean allowOnce = securityPolicy != null
-                && securityPolicy.optBoolean("allowEmployeeBypassWarning", false);
+        boolean allowOnce = securityPolicy == null
+                || securityPolicy.optBoolean("allowEmployeeBypassWarning", true);
+        boolean secretsEnabled = securityPolicy == null
+                || securityPolicy.optBoolean("enableSecretDetection", true);
+        boolean piiEnabled = securityPolicy == null
+                || securityPolicy.optBoolean("enablePiiDetection", true);
         String ownership = response.optString("ownership", "company");
         long graceHours = response.optLong("offlineGraceHours", 72);
         int bootCount = currentBootCount(context);
@@ -39,6 +43,8 @@ final class AndroidPolicy {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                 .putString("schedule", schedule.toString())
                 .putBoolean("allowEmployeeBypassWarning", allowOnce)
+                .putBoolean("enableSecretDetection", secretsEnabled)
+                .putBoolean("enablePiiDetection", piiEnabled)
                 .putString("ownership", ownership)
                 .putLong("serverTimeMs", serverTimeMs)
                 .putLong("syncElapsedMs", SystemClock.elapsedRealtime())
@@ -92,6 +98,16 @@ final class AndroidPolicy {
     static boolean canAllowOnce(Context context) {
         return isActive(context)
                 && preferences(context).getBoolean("allowEmployeeBypassWarning", false);
+    }
+
+    static boolean isSecretDetectionEnabled(Context context) {
+        return isActive(context)
+                && preferences(context).getBoolean("enableSecretDetection", true);
+    }
+
+    static boolean isPiiDetectionEnabled(Context context) {
+        return isActive(context)
+                && preferences(context).getBoolean("enablePiiDetection", true);
     }
 
     static void invalidate(Context context) {

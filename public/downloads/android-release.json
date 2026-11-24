@@ -1,12 +1,12 @@
 {
   "available": true,
-  "version": "0.3.0",
-  "versionCode": 6,
+  "version": "0.4.0",
+  "versionCode": 7,
   "releaseStatus": "debug-test-build",
-  "packageName": "Krypton-Android-0.3.0-test.apk",
-  "downloadUrl": "/downloads/Krypton-Android-0.3.0-test.apk",
-  "fileSizeBytes": 51111,
-  "sha256Checksum": "8c56e0dcb971a193d5706a4259295cd9d9a2038d1114caa8f778878c2ee75d63",
+  "packageName": "Krypton-Android-0.4.0-test.apk",
+  "downloadUrl": "/downloads/Krypton-Android-0.4.0-test.apk",
+  "fileSizeBytes": 62849,
+  "sha256Checksum": "883682360fbd673875b3a22d23a3d26c50be0bded6a9570be233ee6e197407c9",
   "signatureStatus": "debug-keystore",
   "limitations": [
     "Test build only; not signed with a production release key.",

@@ -8,6 +8,7 @@ import android.text.InputType;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
+import android.graphics.drawable.GradientDrawable;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.widget.Button;
@@ -16,31 +17,19 @@ import android.widget.TextView;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
 public final class KryptonInputMethodService extends InputMethodService {
     private static final int BLUE = 37;
     private static final int INK = 15;
     private static final int MUTED = 100;
-    private static final Pattern[] SENSITIVE_PATTERNS = {
-            Pattern.compile("\\bsk-(?!ant-)(?:proj-)?[A-Za-z0-9_-]{24,}\\b"),
-            Pattern.compile("\\bsk-ant-(?:api03-)?[A-Za-z0-9_-]{32,}\\b"),
-            Pattern.compile("\\bAKIA[0-9A-Z]{16}\\b"),
-            Pattern.compile("\\bgh[pousr]_[A-Za-z0-9_]{36,255}\\b"),
-            Pattern.compile("-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----[\\s\\S]*?-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
-            Pattern.compile("(?i)\\b(?:mongodb(?:\\+srv)?|postgres|postgresql|mysql|redis)://[^:\\s]+:[^@\\s]+@[^\\s]+"),
-            Pattern.compile("(?i)\\b(?:password|passwd|api_secret|client_secret|jwt_secret|secret_key|database_url)\\s*[:=]\\s*[^\\s,;]{6,}"),
-            Pattern.compile("(?m)^(?:[A-Z0-9_]*(?:SECRET|KEY|PASSWORD|TOKEN|AUTH|DATABASE_URL)[A-Z0-9_]*)\\s*=\\s*[^\\s,;]{8,}")
-    };
-
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ExecutorService networkExecutor = Executors.newSingleThreadExecutor();
     private LinearLayout keyboard;
     private LinearLayout decisionBar;
     private TextView banner;
     private String heldText;
+    private String heldCategory;
     private boolean secureField;
+    private boolean ownAppField;
     private boolean shifted;
     private boolean symbols;
     private boolean inputActive;
@@ -58,16 +47,20 @@ public final class KryptonInputMethodService extends InputMethodService {
     public View onCreateInputView() {
         keyboard = new LinearLayout(this);
         keyboard.setOrientation(LinearLayout.VERTICAL);
-        keyboard.setPadding(dp(5), dp(6), dp(5), dp(6));
-        keyboard.setBackgroundColor(android.graphics.Color.rgb(241, 245, 249));
+        keyboard.setPadding(dp(8), dp(7), dp(8), dp(7));
+        keyboard.setBackgroundColor(android.graphics.Color.rgb(238, 242, 247));
 
+        LinearLayout header = new LinearLayout(this);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(dp(8), 0, dp(8), 0);
         banner = new TextView(this);
-        banner.setText("Krypton keyboard · checks stay on this phone");
-        banner.setTextSize(12);
+        banner.setText("KRYPTON  ·  ON-DEVICE CHECK");
+        banner.setTextSize(11);
+        banner.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
         banner.setTextColor(color(MUTED));
         banner.setGravity(Gravity.CENTER_VERTICAL);
-        banner.setPadding(dp(9), 0, dp(9), 0);
-        keyboard.addView(banner, new LinearLayout.LayoutParams(-1, dp(34)));
+        header.addView(banner, new LinearLayout.LayoutParams(-1, dp(34)));
+        keyboard.addView(header, new LinearLayout.LayoutParams(-1, dp(34)));
 
         decisionBar = new LinearLayout(this);
         decisionBar.setGravity(Gravity.CENTER_VERTICAL);
@@ -84,6 +77,8 @@ public final class KryptonInputMethodService extends InputMethodService {
         super.onStartInput(attribute, restarting);
         heldText = null;
         int variation = attribute == null ? 0 : attribute.inputType & InputType.TYPE_MASK_VARIATION;
+        ownAppField = attribute != null
+                && getPackageName().equals(attribute.packageName);
         secureField = attribute != null && (
                 variation == InputType.TYPE_TEXT_VARIATION_PASSWORD
                         || variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
@@ -105,6 +100,8 @@ public final class KryptonInputMethodService extends InputMethodService {
         inputActive = false;
         handler.removeCallbacks(heartbeatLoop);
         heldText = null;
+        heldCategory = null;
+        heldCategory = null;
         updateDecisionBar();
         super.onFinishInput();
     }
@@ -134,7 +131,7 @@ public final class KryptonInputMethodService extends InputMethodService {
             key.setMinimumWidth(0);
             key.setMinHeight(0);
             key.setMinimumHeight(0);
-            key.setBackgroundColor(android.graphics.Color.WHITE);
+            key.setBackground(keyBackground(label));
             LinearLayout.LayoutParams keyParams = new LinearLayout.LayoutParams(0, -1, keyWeight(label));
             keyParams.setMargins(dp(2), dp(1), dp(2), dp(1));
             row.addView(key, keyParams);
@@ -218,7 +215,7 @@ public final class KryptonInputMethodService extends InputMethodService {
     }
 
     private boolean inspectCurrentText() {
-        if (secureField || !AndroidPolicy.isActive(this)) {
+        if (secureField || ownAppField || !AndroidPolicy.isActive(this)) {
             updateBanner();
             return false;
         }
@@ -226,19 +223,17 @@ public final class KryptonInputMethodService extends InputMethodService {
         if (connection == null) return false;
         CharSequence before = connection.getTextBeforeCursor(5000, 0);
         if (before == null || before.length() == 0) return false;
-        String text = before.toString();
-        for (Pattern pattern : SENSITIVE_PATTERNS) {
-            Matcher matcher = pattern.matcher(text);
-            while (matcher.find()) {
-                if (matcher.end() == text.length()) {
-                    String matched = matcher.group();
-                    if (connection.deleteSurroundingText(matched.length(), 0)) {
-                        heldText = matched;
-                        showDecision();
-                        return true;
-                    }
-                }
-            }
+        LocalSensitiveDataDetector.Detection detection = LocalSensitiveDataDetector.find(
+                before.toString(),
+                AndroidPolicy.isSecretDetectionEnabled(this),
+                AndroidPolicy.isPiiDetectionEnabled(this)
+        );
+        if (detection != null
+                && connection.deleteSurroundingText(detection.matchedText.length(), 0)) {
+            heldText = detection.matchedText;
+            heldCategory = detection.category;
+            showDecision();
+            return true;
         }
         updateBanner();
         return false;
@@ -246,9 +241,7 @@ public final class KryptonInputMethodService extends InputMethodService {
 
     private void showDecision() {
         boolean allowOnce = AndroidPolicy.canAllowOnce(this);
-        banner.setText(allowOnce
-                ? "Sensitive-looking text removed from the field."
-                : "Company policy blocked this sensitive-looking text.");
+        banner.setText(heldCategory + (allowOnce ? " detected · choose an action" : " detected · blocked by policy"));
         banner.setTextColor(android.graphics.Color.rgb(185, 28, 28));
         decisionBar.removeAllViews();
         Button block = actionButton("Keep blocked", false);
@@ -261,6 +254,7 @@ public final class KryptonInputMethodService extends InputMethodService {
             allow.setOnClickListener(view -> {
                 String pending = heldText;
                 heldText = null;
+                heldCategory = null;
                 if (pending != null && getCurrentInputConnection() != null) {
                     getCurrentInputConnection().commitText(pending, 1);
                 }
@@ -272,6 +266,7 @@ public final class KryptonInputMethodService extends InputMethodService {
         }
         block.setOnClickListener(view -> {
             heldText = null;
+            heldCategory = null;
             updateDecisionBar();
             updateBanner();
         });
@@ -296,13 +291,24 @@ public final class KryptonInputMethodService extends InputMethodService {
     private void updateBanner() {
         if (banner == null || heldText != null) return;
         if (secureField) {
-            banner.setText("Password field · scanning is paused");
+            banner.setText("PASSWORD FIELD · CHECKS PAUSED");
+            banner.setTextColor(color(MUTED));
+        } else if (ownAppField) {
+            banner.setText("KRYPTON SIGN-IN · CHECKS PAUSED");
             banner.setTextColor(color(MUTED));
         } else if (AndroidPolicy.isActive(this)) {
-            banner.setText("Krypton policy active · text is checked locally");
+            boolean secrets = AndroidPolicy.isSecretDetectionEnabled(this);
+            boolean pii = AndroidPolicy.isPiiDetectionEnabled(this);
+            String coverage = secrets && pii ? "SECRETS + PII"
+                    : secrets ? "SECRETS"
+                    : pii ? "PII"
+                    : "CHECKS DISABLED BY ADMIN";
+            banner.setText(secrets || pii
+                    ? "ACTIVE · " + coverage + " CHECKED LOCALLY"
+                    : "POLICY ACTIVE · " + coverage);
             banner.setTextColor(color(BLUE));
         } else {
-            banner.setText("Policy inactive · text checks are paused");
+            banner.setText("PROTECTION INACTIVE · TEXT CHECKS PAUSED");
             banner.setTextColor(android.graphics.Color.rgb(180, 83, 9));
         }
     }
@@ -372,6 +378,23 @@ public final class KryptonInputMethodService extends InputMethodService {
         if (label.equals("space")) return 5f;
         if (label.equals("enter") || label.equals("?123") || label.equals("⇧") || label.equals("⌫")) return 1.5f;
         return 1f;
+    }
+
+    private GradientDrawable keyBackground(String label) {
+        int fill = android.graphics.Color.WHITE;
+        int stroke = android.graphics.Color.rgb(226, 232, 240);
+        if (label.equals("enter")) {
+            fill = android.graphics.Color.rgb(219, 234, 254);
+            stroke = android.graphics.Color.rgb(191, 219, 254);
+        } else if (label.equals("⇧") || label.equals("⌫") || label.equals("?123") || label.equals("ABC")) {
+            fill = android.graphics.Color.rgb(226, 232, 240);
+            stroke = fill;
+        }
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setColor(fill);
+        drawable.setCornerRadius(dp(7));
+        drawable.setStroke(dp(1), stroke);
+        return drawable;
     }
 
     private int color(int value) {
